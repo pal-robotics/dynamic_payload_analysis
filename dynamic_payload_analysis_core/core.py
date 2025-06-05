@@ -7,7 +7,7 @@ import math
 
 
 class TorqueCalculator:
-    def __init__(self, urdf_path, robot_description):
+    def __init__(self, urdf_path, robot_description = None):
         """
         Initialize the Torques_calculator with the URDF model or XML format provided by robot_description topic.
         
@@ -38,20 +38,18 @@ class TorqueCalculator:
         Compute the inverse dynamics torque vector.
         
         :param q: Joint configuration vector.
-        :param v: Joint velocity vector.
+        :param qdot: Joint velocity vector.
         :param a: Joint acceleration vector.
         :return: Torques vector.
         """
-        if q is None or v is None or a is None:
-            raise ValueError("Joint configuration, velocity, and acceleration vectors must be provided")
 
         # basic equation for inverse dynamics : M(q) *a + b = tau + J(q)_t * extForce --> tau = M(q) * a + b - J(q)_t * extForce
 
         if extForce is None:
-            tau = pin.rnea(self.model, self.data, q, v, a)
+            tau = pin.rnea(self.model, self.data, q, qdot, qddot)
         
         if extForce is not None:
-            tau = pin.rnea(self.model, self.data, q, v, a, extForce)
+            tau = pin.rnea(self.model, self.data, q, qdot, qddot, extForce)
         
         if tau is None:
             raise ValueError("Failed to compute torques")
@@ -59,7 +57,7 @@ class TorqueCalculator:
         return tau
     
 
-    def create_ext_force(self, mass, frame_name):
+    def create_ext_force(self, mass, frame_name, q):
         """
         Create an external force vector based on the mass and frame ID.
         
@@ -81,7 +79,7 @@ class TorqueCalculator:
         # Initialize external forces array
         fext = [pin.Force(np.zeros(6)) for _ in range(self.model.njoints)]
         
-        self.update_configuration() 
+        self.update_configuration(q) 
 
         # Get the frame ID and joint ID from the frame name
         frame_id = self.model.getFrameId(frame_name)
@@ -112,15 +110,13 @@ class TorqueCalculator:
         pin.updateFramePlacements(self.model, self.data)
 
 
-    def get_mass_matrix(self, q = None):
+    def get_mass_matrix(self, q):
         """
         Compute the mass matrix for the robot model.
         
         :param q: Joint configuration vector.
         :return: Mass matrix.
         """
-        if q is None:
-            raise ValueError("Joint configuration vector must be provided")
         
         M = pin.crba(self.model, self.data, q)
         if M is None:
@@ -128,18 +124,16 @@ class TorqueCalculator:
         
         return M
 
-    def compute_maximum_payload(self, q = None, v = None, tau = None, frame_name = None, extForce = None):
+    def compute_maximum_payload(self, q, qdot, tau, frame_name):
         """
         Compute the forward dynamics acceleration vector.
         
         :param q: Joint configuration vector.
-        :param v: Joint velocity vector.
+        :param qdot: Joint velocity vector.
         :param tau: Joint torque vector.
         :param frame_name: Name of the frame where the force is applied.
         :return: Acceleration vector.
         """
-        if q is None or v is None or tau is None:
-            raise ValueError("Joint configuration, velocity, and torque vectors must be provided")
         
         # Update the configuration of the robot model
         self.update_configuration(q)
@@ -147,10 +141,10 @@ class TorqueCalculator:
         # basic idea for forward dynamics: M(q) * a_q + b = tau(q) --> a_q = (tau(q) - b)/ M(q)
         # with external force, the equation becomes: M(q) * a_q + b = tau(q) + J_traspose(q) * f_ext -- > f_ext = (M(q) * a_q + b - tau(q))/ J_traspose(q)
 
-        aq0 = np.zeros(self.model.nv) # Initialize acceleration vector
+        qddot0 = np.zeros(self.model.nv) # Initialize acceleration vector
         
         # calculate dynamics drift
-        b = pin.rnea(self.model, self.data, q, v, aq0)
+        b = pin.rnea(self.model, self.data, q, qdot, qddot0)
 
         #get jacobian of the frame where the payload is applied
         J = self.get_Jacobian(q, frame_name)
@@ -168,28 +162,26 @@ class TorqueCalculator:
         return F_max[1] # get the force in z axis of the world frame, which is the maximum force payload
     
 
-    def compute_forward_dy_aba_method(self, q = None, v = None, tau = None, extForce = None):
+    def compute_forward_dy_aba_method(self, q, qdot, tau, extForce = None):
         """
         Compute the forward dynamics acceleration vector with Articulated-Body algorithm(ABA).
         
         :param q: Joint configuration vector.
-        :param v: Joint velocity vector.
+        :param qdot: Joint velocity vector.
         :param tau: Joint torque vector.
         :return: Acceleration vector.
         """
-        if q is None or v is None or tau is None:
-            raise ValueError("Joint configuration, velocity, and torque vectors must be provided")
         
         # calculate dynamics drift
         if extForce is not None:
-            ddq = pin.aba(self.model, self.data, q, v, tau, extForce)
+            ddq = pin.aba(self.model, self.data, q, qdot, tau, extForce)
         else:
-            ddq = pin.aba(self.model, self.data, q, v, tau)
+            ddq = pin.aba(self.model, self.data, q, qdot, tau)
         
         return ddq
     
 
-    def get_Jacobian(self, q = None, frame_name = None):
+    def get_Jacobian(self, q, frame_name):
         """
         Get the Jacobian matrix for a specific frame in the robot model.
         
@@ -197,9 +189,6 @@ class TorqueCalculator:
         :param frame_name: Name of the frame to compute the Jacobian for.
         :return: Jacobian matrix.
         """
-        if q is None or frame_name is None:
-            raise ValueError("Joint configuration vector and frame name must be provided")
-        
         
         # Get the frame ID
         frame_id = self.model.getFrameId(frame_name)
@@ -276,11 +265,11 @@ class TorqueCalculator:
         q = np.random.rand(self.model.nq)
         if q is None:
             raise ValueError("Failed to get random configuration")
-        v = np.random.rand(self.model.nv)
-        if v is None:
+        qdot = np.random.rand(self.model.nv)
+        if qdot is None:
             raise ValueError("Failed to get random velocity")
          
-        return q, v
+        return q, qdot
 
 
     def check_effort_limits(self, tau):
@@ -304,14 +293,12 @@ class TorqueCalculator:
 
 
 
-    def set_position(self, pos_joints=None, name_positions=None):
+    def set_position(self, pos_joints, name_positions):
         """
         Set the joint positions of the robot model.
         
         :param q: Joint configuration vector to set provided by joint state topic.
         """
-        if pos_joints is None:
-            raise ValueError("Joint configuration vector must be provided")
         
         q = np.zeros(self.model.nq)
         cont = 0
@@ -374,17 +361,15 @@ class TorqueCalculator:
         print("\n")
 
 
-    def print_acceleration(self, a):
+    def print_acceleration(self, qddot):
         """
         Print the acceleration vector.
         
         :param a: Acceleration vector to print.
         """
-        if a is None:
-            raise ValueError("Acceleration vector is None")
         
         print("Acceleration vector:")
-        for i, acc in enumerate(a):
+        for i, acc in enumerate(qddot):
             print(f"Joint {i+2} {self.model.names[i+1]}: {acc:.6f} rad/s^2")
         
         print("\n")
