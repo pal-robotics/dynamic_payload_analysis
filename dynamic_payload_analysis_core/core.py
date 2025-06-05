@@ -7,7 +7,7 @@ import math
 
 
 class TorqueCalculator:
-    def __init__(self, urdf_path, robot_description = None):
+    def __init__(self, urdf_path = None, robot_description = None):
         """
         Initialize the Torques_calculator with the URDF model or XML format provided by robot_description topic.
         
