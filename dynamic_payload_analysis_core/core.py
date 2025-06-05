@@ -181,7 +181,7 @@ class TorqueCalculator:
         return ddq
     
 
-    def get_Jacobian(self, q, frame_name):
+    def compute_jacobian(self, q, frame_name):
         """
         Get the Jacobian matrix for a specific frame in the robot model.
         
@@ -205,17 +205,17 @@ class TorqueCalculator:
         return J_frame
     
 
-    def check_zero_acceleration(self, a):
+    def check_zero(self, vec):
         """
-        Check if the acceleration vector is zero.
+        Checks if the vector is zero.
         
-        :param a: Acceleration vector to check.
+        :param vec: Vector to check.
         :return: True if the acceleration vector is zero, False otherwise.
         """
-        if a is None:
-            raise ValueError("Acceleration vector is None")
+        if not vec:
+            raise ValueError("The provided vector is invalid!")
         
-        return np.allclose(a, np.zeros(self.model.nv), atol=1e-6)
+        return np.allclose(vec, np.zeros(self.model.nv), atol=1e-6)
 
 
     def get_zero_configuration(self):
@@ -375,7 +375,7 @@ class TorqueCalculator:
         print("\n")
 
 
-    def print_activejoint(self):
+    def print_active_joint(self):
         """
         Print the active joints of the robot model.
         """
