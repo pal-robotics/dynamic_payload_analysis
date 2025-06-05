@@ -6,8 +6,8 @@ import math
 
 
 
-class Torques_calculator:
-    def __init__(self, urdf_path = None, robot_description = None):
+class TorqueCalculator:
+    def __init__(self, urdf_path, robot_description):
         """
         Initialize the Torques_calculator with the URDF model or XML format provided by robot_description topic.
         
@@ -33,7 +33,7 @@ class Torques_calculator:
         self.base_link_id = self.model.getFrameId("base_link")
         
 
-    def compute_inverse_dy(self, q = None, v = None, a = None, extForce = None):
+    def compute_inverse_dynamics(self, q, qdot, qddot, extForce = None):
         """
         Compute the inverse dynamics torque vector.
         
@@ -102,19 +102,14 @@ class Torques_calculator:
         return fext
 
 
-    def update_configuration(self, q = None):
+    def update_configuration(self, q):
         """
         Update the robot model configuration with the given joint configuration vector.
         
         :param q: Joint configuration vector.
         """
-        if q is None:
-            # q = self.get_zero_configuration()
-            pin.updateFramePlacements(self.model, self.data)
-        
-        if q is not None:
-            pin.forwardKinematics(self.model, self.data, q)
-            pin.updateFramePlacements(self.model, self.data)
+        pin.forwardKinematics(self.model, self.data, q)
+        pin.updateFramePlacements(self.model, self.data)
 
 
     def get_mass_matrix(self, q = None):
