@@ -146,10 +146,10 @@ class TorqueCalculator:
         b = pin.rnea(self.model, self.data, q, qdot, qddot0)
 
         #get jacobian of the frame where the payload is applied
-        J = self.get_Jacobian(q, frame_name)
+        J = self.compute_jacobian(q, frame_name)
 
         tau_r = b - tau
-        # Solve for acceleration
+        
         try:
             #a = np.linalg.solve(M, tau - b)
             # get F = (J_transpose(q))^-1  X ( tau - b ) with b = M(q)*a_q + b || pinv = pseudo-inverse to prevent singularities
@@ -158,7 +158,7 @@ class TorqueCalculator:
         except np.linalg.LinAlgError as e:
             raise ValueError(f"Failed to solve for acceleration: {e}")
         
-        return F_max[1] # get the force in z axis of the world frame, which is the maximum force payload
+        return F_max[2] # get the force in z axis of the world frame, which is the maximum force payload
     
 
     def compute_forward_dy_aba_method(self, q, qdot, tau, extForce = None):
@@ -204,15 +204,13 @@ class TorqueCalculator:
         return J_frame
     
 
-    def check_zero(self, vec):
+    def check_zero(self, vec : np.ndarray):
         """
         Checks if the vector is zero.
         
         :param vec: Vector to check.
         :return: True if the acceleration vector is zero, False otherwise.
         """
-        if not vec:
-            raise ValueError("The provided vector is invalid!")
         
         return np.allclose(vec, np.zeros(self.model.nv), atol=1e-6)
 
@@ -264,11 +262,14 @@ class TorqueCalculator:
         q_limits_lower = self.model.lowerPositionLimit
         q_limits_upper = self.model.upperPositionLimit
         
+        # generate random configuration vector within the limits
         q = np.random.uniform(q_limits_lower, q_limits_upper)
 
         if q is None:
             raise ValueError("Failed to get random configuration")
-        qdot = np.random.rand(self.model.nv)
+        
+        # Generate random velocity vector within the limits
+        qdot = np.random.uniform(-self.model.velocityLimit, self.model.velocityLimit)
         if qdot is None:
             raise ValueError("Failed to get random velocity")
          
