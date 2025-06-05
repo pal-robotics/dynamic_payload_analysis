@@ -33,7 +33,7 @@ class TorqueCalculator:
         self.base_link_id = self.model.getFrameId("base_link")
         
 
-    def compute_inverse_dynamics(self, q, qdot, qddot, extForce = None):
+    def compute_inverse_dynamics(self, q, qdot, qddot, extForce : list[pin.Force] = None) -> np.ndarray:
         """
         Compute the inverse dynamics torque vector.
         
@@ -56,7 +56,7 @@ class TorqueCalculator:
         return tau
     
 
-    def create_ext_force(self, mass, frame_name, q):
+    def create_ext_force(self, mass, frame_name, q) -> list[pin.Force]:
         """
         Create an external force vector based on the mass and frame ID.
         
@@ -109,7 +109,7 @@ class TorqueCalculator:
         pin.updateFramePlacements(self.model, self.data)
 
 
-    def get_mass_matrix(self, q):
+    def get_mass_matrix(self, q) -> np.ndarray:
         """
         Compute the mass matrix for the robot model.
         
@@ -123,7 +123,7 @@ class TorqueCalculator:
         
         return M
 
-    def compute_maximum_payload(self, q, qdot, tau, frame_name):
+    def compute_maximum_payload(self, q, qdot, tau, frame_name) -> float:
         """
         Compute the forward dynamics acceleration vector.
         
@@ -161,7 +161,7 @@ class TorqueCalculator:
         return F_max[2] # get the force in z axis of the world frame, which is the maximum force payload
     
 
-    def compute_forward_dy_aba_method(self, q, qdot, tau, extForce = None):
+    def compute_forward_dy_aba_method(self, q, qdot, tau, extForce = None) -> np.ndarray:
         """
         Compute the forward dynamics acceleration vector with Articulated-Body algorithm(ABA).
         
@@ -180,7 +180,7 @@ class TorqueCalculator:
         return ddq
     
 
-    def compute_jacobian(self, q, frame_name):
+    def compute_jacobian(self, q, frame_name) -> np.ndarray:
         """
         Get the Jacobian matrix for a specific frame in the robot model.
         
@@ -204,7 +204,7 @@ class TorqueCalculator:
         return J_frame
     
 
-    def check_zero(self, vec : np.ndarray):
+    def check_zero(self, vec : np.ndarray) -> bool:
         """
         Checks if the vector is zero.
         
@@ -215,7 +215,7 @@ class TorqueCalculator:
         return np.allclose(vec, np.zeros(self.model.nv), atol=1e-6)
 
 
-    def get_zero_configuration(self):
+    def get_zero_configuration(self) -> np.ndarray:
         """
         Get the zero configuration of the robot model.
         
@@ -228,7 +228,7 @@ class TorqueCalculator:
         return q0
     
 
-    def get_zero_velocity(self):
+    def get_zero_velocity(self) -> np.ndarray:
         """
         Get the zero velocity vector of the robot model.
         
@@ -241,7 +241,7 @@ class TorqueCalculator:
         return v0
     
 
-    def get_zero_acceleration(self):
+    def get_zero_acceleration(self) -> np.ndarray:
         """
         Get the zero acceleration vector of the robot model.
         
@@ -254,7 +254,7 @@ class TorqueCalculator:
         return a0
     
 
-    def get_random_configuration(self):
+    def get_random_configuration(self) -> tuple[np.ndarray, np.ndarray]:
         """
         Get a random configuration for configuration and velocity vectors.
         :return: Random configuration vector.
@@ -276,7 +276,7 @@ class TorqueCalculator:
         return q, qdot
 
 
-    def check_effort_limits(self, tau):
+    def check_effort_limits(self, tau) -> bool:
         """
         Check if the torques vector is within the effort limits of the robot model.
         
@@ -297,7 +297,7 @@ class TorqueCalculator:
 
 
 
-    def set_position(self, pos_joints, name_positions):
+    def set_position(self, pos_joints, name_positions) -> np.ndarray:
         """
         Set the joint positions of the robot model.
         
