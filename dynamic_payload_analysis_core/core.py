@@ -45,11 +45,10 @@ class TorqueCalculator:
 
         # basic equation for inverse dynamics : M(q) *a + b = tau + J(q)_t * extForce --> tau = M(q) * a + b - J(q)_t * extForce
 
-        if extForce is None:
-            tau = pin.rnea(self.model, self.data, q, qdot, qddot)
-        
-        if extForce is not None:
+        if extForce:
             tau = pin.rnea(self.model, self.data, q, qdot, qddot, extForce)
+        else:
+            tau = pin.rnea(self.model, self.data, q, qdot, qddot)
         
         if tau is None:
             raise ValueError("Failed to compute torques")
@@ -262,7 +261,11 @@ class TorqueCalculator:
         Get a random configuration for configuration and velocity vectors.
         :return: Random configuration vector.
         """
-        q = np.random.rand(self.model.nq)
+        q_limits_lower = self.model.lowerPositionLimit
+        q_limits_upper = self.model.upperPositionLimit
+        
+        q = np.random.uniform(q_limits_lower, q_limits_upper)
+
         if q is None:
             raise ValueError("Failed to get random configuration")
         qdot = np.random.rand(self.model.nv)
