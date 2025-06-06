@@ -49,7 +49,8 @@ class TorqueCalculator:
 
     def create_ext_force(self, mass : float, frame_name, q) -> list[pin.Force]:
         """
-        Create an external force vector based on the mass and frame ID.
+        Create external forces vector based on the mass and frame ID.
+        The resulting vector will contain the force applied to the specified frame and with the local orientation of the parent joint.
         
         :param mass: Mass of the object to apply the force to.
         :param frame_id: Frame ID where the force is applied.
@@ -75,14 +76,14 @@ class TorqueCalculator:
         frame_id = self.model.getFrameId(frame_name)
         joint_id = self.model.frames[frame_id].parentJoint
 
-        # force in the world frame
-        ext_force_world = pin.Force(np.array([0.0, 0.0, mass * -9.81]), np.array([0.0, 0.0, 0.0]))  # force in z axis of the world frame
+        # force expressed in the world frame (gravity force in z axis)
+        ext_force_world = pin.Force(np.array([0.0, 0.0, mass * -9.81]), np.array([0.0, 0.0, 0.0])) 
 
         # placement of the frame in the world frame
         frame_placement = self.data.oMf[frame_id]
         #print(f"Frame placement: {frame_placement}")
         
-        # Apply the force to the joint in the world frame
+        # Convert the external force expressed in the world frame to the orientation of the joint frame where the force is applied
         fext[joint_id] = self.data.oMi[joint_id].actInv(ext_force_world)
         # Zero out the last 3 components (torques) of the force to ensure only the force in z axis (gravity force) is applied
         fext[joint_id].angular = np.zeros(3) # TODO : make it more efficient 
