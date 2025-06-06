@@ -3,34 +3,25 @@
 import pinocchio as pin
 import numpy as np
 import math
-
-
+from typing import Union
+from pathlib import Path
 
 class TorqueCalculator:
-    def __init__(self, urdf_path = None, robot_description = None):
+    def __init__(self, robot_description : Union[str, Path]):
         """
         Initialize the Torques_calculator with the URDF model or XML format provided by robot_description topic.
         
         :param urdf_path: Path to the URDF file of the robot.
-        :param robot_description: Robot description in XML format.
+        :param robot_description: Robot description in XML format provided by /robot_description topic or path of URDF file.
         """
-        
-        if urdf_path is None and robot_description is None:
-            raise ValueError("URDF path or robot description is required but was not provided")
-        
-        if urdf_path is not None and robot_description is not None:
-            raise ValueError("Only one of URDF path or robot description should be provided, not both")
-        
-        # Load the robot model from URDF or XML
-        if urdf_path is not None:
-            self.model = pin.buildModelFromUrdf(urdf_path)
 
-        if robot_description is not None:
+        # Load the robot model from path or XML string
+        if isinstance(robot_description, str):
             self.model = pin.buildModelFromXML(robot_description)
+        elif isinstance(robot_description, Path):
+            self.model = pin.buildModelFromUrdf(str(robot_description.resolve()))
         
         self.data = self.model.createData()
-
-        self.base_link_id = self.model.getFrameId("base_link")
         
 
     def compute_inverse_dynamics(self, q, qdot, qddot, extForce : list[pin.Force] = None) -> list:
