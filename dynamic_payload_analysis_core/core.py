@@ -115,6 +115,40 @@ class TorqueCalculator:
         
         return M
     
+    def get_joints(self) -> np.array:
+        """
+        Get the array joint names of the robot model.
+        
+        :return: array Joint names .
+        """
+        
+        return np.array(self.model.names[1:], dtype=str)
+    
+    def get_frames(self) -> np.array:
+        """
+        Get the array of frame names in the robot model.
+        
+        :return: array of frame names.
+        """
+        
+        return np.array([frame.name for frame in self.model.frames if frame.type == pin.FrameType.BODY], dtype=str)
+    
+    def get_active_frames(self) -> np.array:
+        """
+        Get the array of active joint names in the robot model.
+        
+        :return: array of active joint names.
+        """
+        # Get frames where joints are parents
+        frame_names = []
+        for i in range(1, self.model.njoints):
+            for frame in self.model.frames:
+                if frame.parentJoint == i and frame.type == pin.FrameType.BODY:
+                    frame_names.append(frame.name)
+                    break
+        
+        return np.array(frame_names, dtype=str)
+    
     def get_parent_joint_id(self, frame_name : str) -> int:
         """
         Get the parent joint ID for a given frame name.
