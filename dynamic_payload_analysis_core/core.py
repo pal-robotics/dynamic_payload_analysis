@@ -31,7 +31,7 @@ class TorqueCalculator:
         :param q: Joint configuration vector.
         :param qdot: Joint velocity vector.
         :param a: Joint acceleration vector.
-        :return: Torques vector.
+        :return: Torques vector
         """
 
         # basic equation for inverse dynamics : M(q) *a + b = tau + J(q)_t * extForce --> tau = M(q) * a + b - J(q)_t * extForce
@@ -43,7 +43,7 @@ class TorqueCalculator:
         
         if tau is None:
             raise ValueError("Failed to compute torques")
-        
+    
         return tau
     
 
@@ -322,24 +322,30 @@ class TorqueCalculator:
         return q, qdot
 
 
-    def check_effort_limits(self, tau : np.ndarray) -> bool:
+    def check_effort_limits(self, tau : np.ndarray) -> np.ndarray:
         """
         Check if the torques vector is within the effort limits of the robot model.
         
         :param tau: Torques vector to check.
-        :return: True if within limits, False otherwise.
+        :return: Array of booleans indicating if each joint is within the effort limits.
         """
         if tau is None:
             raise ValueError("Torques vector is None")
         
+        # array to store if the joint is within the limits
+        within_limits = np.zeros(self.model.njoints - 1, dtype=bool)
+
         # Check if the torques are within the limits
         for i in range(self.model.njoints -1): 
             if abs(tau[i]) > self.model.effortLimit[i]:
                 print(f"\033[91mJoint {i+2} exceeds effort limit: {tau[i]} > {self.model.effortLimit[i]} \033[0m\n")
-                return False
+                within_limits[i] = False
+            else:
+                within_limits[i] = True
         
         print("All joints are within effort limits. \n")
-        return True
+        
+        return within_limits
 
 
 
