@@ -115,7 +115,7 @@ class TorqueCalculator:
         
         return M
     
-    def get_joints(self) -> np.array:
+    def get_joints(self) -> np.ndarray:
         """
         Get the array joint names of the robot model.
         
@@ -124,7 +124,7 @@ class TorqueCalculator:
         
         return np.array(self.model.names[1:], dtype=str)
     
-    def get_frames(self) -> np.array:
+    def get_frames(self) -> np.ndarray:
         """
         Get the array of frame names in the robot model.
         
@@ -133,7 +133,7 @@ class TorqueCalculator:
         
         return np.array([frame.name for frame in self.model.frames if frame.type == pin.FrameType.BODY], dtype=str)
     
-    def get_active_frames(self) -> np.array:
+    def get_active_frames(self) -> np.ndarray:
         """
         Get the array of active joint names in the robot model.
         
@@ -372,15 +372,31 @@ class TorqueCalculator:
         
         return q
 
-    def print_configuration(self):
+    def print_configuration(self, q : np.ndarray = None):
         """
         Print the current configuration of the robot model.
         """
+
+        self.update_configuration(q)
+
         for frame_id, frame in enumerate(self.model.frames):
             placement = self.data.oMf[frame_id]
             print(f"Frame: {frame.name}")
             print(f"  Rotation:\n{placement.rotation}")
             print(f"  Translation:\n{placement.translation}")
+    
+    def get_joints_placements(self, q : np.ndarray) -> np.ndarray:
+        """
+        Get the placements of the joints in the robot model.
+        
+        :param q: Joint configuration vector.
+        :return: Array of joint placements with names of joint.
+        """
+        
+        self.update_configuration(q)
+        placements = np.array([({"name" : self.model.names[i], "x": self.data.oMi[i].translation[0], "y": self.data.oMi[i].translation[1], "z": self.data.oMi[i].translation[2]}) for i in range(1, self.model.njoints)], dtype=object)
+        
+        return placements
 
 
     def print_torques(self, tau : np.ndarray):
