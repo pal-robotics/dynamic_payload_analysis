@@ -109,11 +109,11 @@ class TorqueCalculator:
         :return: Mass matrix.
         """
         
-        M = pin.crba(self.model, self.data, q)
-        if M is None:
+        mass_matrix = pin.crba(self.model, self.data, q)
+        if mass_matrix is None:
             raise ValueError("Failed to compute mass matrix")
         
-        return M
+        return mass_matrix
     
     def get_joints(self) -> np.ndarray:
         """
@@ -207,7 +207,7 @@ class TorqueCalculator:
         return F_max[2] # get the force in z axis of the world frame, which is the maximum force payload
     
 
-    def compute_forward_dy_aba_method(self, q : np.ndarray, qdot : np.ndarray, tau : np.ndarray, extForce : np.ndarray[pin.Force] = None) -> np.ndarray:
+    def compute_forward_dynamics_aba_method(self, q : np.ndarray, qdot : np.ndarray, tau : np.ndarray, extForce : np.ndarray[pin.Force] = None) -> np.ndarray:
         """
         Compute the forward dynamics acceleration vector with Articulated-Body algorithm(ABA).
         
