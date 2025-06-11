@@ -403,6 +403,21 @@ class TorqueCalculator:
         placements = np.array([({"name" : self.model.names[i],"type" : self.model.joints[i].shortname() , "x": self.data.oMi[i].translation[0], "y": self.data.oMi[i].translation[1], "z": self.data.oMi[i].translation[2]}) for i in range(1, self.model.njoints)], dtype=object)
         
         return placements
+    
+
+    def get_joint_placement(self, joint_id : int) -> np.ndarray:
+        """
+        Get the placement of a specific joint in the robot model.
+        
+        :param joint_id: ID of the joint to get the placement for.
+        :return: Placement of the joint as a numpy array.
+        """
+        
+        if joint_id < 0 or joint_id >= self.model.njoints:
+            raise ValueError(f"Joint ID {joint_id} is out of bounds for the robot model with {self.model.njoints} joints.")
+        
+        placement = self.data.oMi[joint_id].translation
+        return np.array(placement)
 
 
     def print_torques(self, tau : np.ndarray):
