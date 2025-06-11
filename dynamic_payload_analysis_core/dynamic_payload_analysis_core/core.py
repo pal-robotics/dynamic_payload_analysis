@@ -400,7 +400,7 @@ class TorqueCalculator:
         """
         
         self.update_configuration(q)
-        placements = np.array([({"name" : self.model.names[i], "x": self.data.oMi[i].translation[0], "y": self.data.oMi[i].translation[1], "z": self.data.oMi[i].translation[2]}) for i in range(1, self.model.njoints)], dtype=object)
+        placements = np.array([({"name" : self.model.names[i],"type" : self.model.joints[i].shortname() , "x": self.data.oMi[i].translation[0], "y": self.data.oMi[i].translation[1], "z": self.data.oMi[i].translation[2]}) for i in range(1, self.model.njoints)], dtype=object)
         
         return placements
 
