@@ -413,13 +413,18 @@ class TorqueCalculator:
         """
         if tau is None:
             raise ValueError("Torques vector is None")
-        
+
         print("Torques vector:")
         for i, torque in enumerate(tau):
-            # TODO Extract type of joint in order to print right measure unit ([N] or [Nm])
-            print(f"Joint {i+2} {self.model.names[i+1]}: {torque:.4f} Nm")
-        
+            # check if the joint is a prismatic joint
+            if self.model.joints[i+1].shortname() == "JointModelPZ":
+                print(f"Joint {i+2} {self.model.names[i+1]}: {torque:.4f} N")
+                
+            # for revolute joints
+            else:
+                print(f"Joint {i+2} {self.model.names[i+1]}: {torque:.4f} Nm")
         print("\n")
+
 
 
     def print_frames(self):
