@@ -25,6 +25,9 @@ from visualization_msgs.msg import Marker, MarkerArray
 from dynamic_payload_analysis_ros.menu_visual import MenuPayload
 
 
+#TODO : Add payload mass selection in the menu
+#TODO : Add possibility to select multiple frames with payload
+
 class RobotDescriptionSubscriber(Node):
     def __init__(self):
         super().__init__('node_robot_description_subscriber')
@@ -39,7 +42,7 @@ class RobotDescriptionSubscriber(Node):
         self.menu = MenuPayload(self)
 
         # Publisher for external force
-        self.publisher_force = self.create_publisher(WrenchStamped, '/external_force', 10)
+        self.publisher_force = self.create_publisher(MarkerArray, '/external_forces', 10)
 
         # Publisher for RViz visualization of torques
         self.publisher_rviz_torque = self.create_publisher(MarkerArray, '/torque_visualization', 10)
@@ -50,7 +53,7 @@ class RobotDescriptionSubscriber(Node):
         self.robot = None
 
         # frame where the external force is applied
-        self.frame_id = "arm_left_7_link"
+        self.frame_id = None
 
         self.external_force = None
 
@@ -80,18 +83,25 @@ class RobotDescriptionSubscriber(Node):
             q = self.robot.set_position(positions, name_position)
             a = self.robot.get_zero_acceleration()
 
+                    
+            # create the array with only the checked frames (with external force applied)
+            self.checked_frames = np.array([check_frame["name"] for check_frame in self.menu.get_item_state() if check_frame['checked']])
 
-            # Compute inverse dynamics with external force
-            for frame in self.menu.get_item_state():
-                if frame['checked']:
-                    self.frame_id = frame['name']
-                    self.external_force = self.robot.create_ext_force(mass=4.0, frame_name=self.frame_id, q=q)
-                
+            # if there are no checked frames, set the external force to None
+            if len(self.checked_frames) != 0:
+                self.external_force = self.robot.create_ext_force(mass=4.0, frame_name=self.checked_frames, q=q)
+            else:
+                self.external_force = None
 
+            # compute the inverse dynamics
             tau = self.robot.compute_inverse_dynamics(q, v, a, extForce=self.external_force)
 
+            # check the effort limits
             status_efforts = self.robot.check_effort_limits(tau)
+            # print the torques
             self.robot.print_torques(tau)
+
+            # get the active frames and joints positions
             frames = self.robot.get_active_frames()
             joints_position = self.robot.get_joints_placements(q)
 
@@ -99,8 +109,7 @@ class RobotDescriptionSubscriber(Node):
             self.publish_rviz_torque(tau, status_torques=status_efforts ,joints_position=joints_position)
 
             # publish the external force
-            if self.external_force is not None:
-                self.publish_payload_force(self.frame_id, self.external_force)
+            self.publish_payload_force(self.menu.get_item_state())
 
 
     def publish_rviz_torque(self, torque: np.ndarray, status_torques : np.ndarray, joints_position: np.ndarray):
@@ -149,7 +158,7 @@ class RobotDescriptionSubscriber(Node):
 
 
     
-    def publish_payload_force(self, frame_id : str, external_force: np.ndarray):
+    def publish_payload_force(self, frames_names : np.ndarray[str]):
         """
         Publish the gravity force on the frame with id `id_force`.
 
@@ -157,45 +166,49 @@ class RobotDescriptionSubscriber(Node):
             frame_id (str): The frame where the external force is applied.
             external_force (np.ndarray): The external force to be published
         """
-        id_force = self.robot.get_parent_joint_id(frame_id)
-        position = self.robot.get_joint_placement(id_force)
-
-        # force = Marker()
-        # force.header.frame_id = frame_id
-        # force.header.stamp = self.get_clock().now().to_msg()
-        # force.ns = "external_force"
-        # force.id = id_force
-        # force.type = Marker.ARROW
-        # force.action = Marker.ADD
-        # force.scale.x = 0.20   
-        # force.scale.y = 0.05  
-        # force.scale.z = 0.05 
-        # force.color.a = 1.0  # Alpha
-        # force.color.r = 0.0  # Red
-        # force.color.g = 0.0
-        # force.color.b = 1.0  # Blue
-        # # Set the direction of the arrow based on the external force
-        # force.pose.orientation.x = external_force[id_force].linear[0]
-        # force.pose.orientation.y = external_force[id_force].linear[1]
-        # force.pose.orientation.z = external_force[id_force].linear[2]
-        # force.pose.orientation.w = 0.0  # Set to 1.0 for a straight arrow
-        # self.publisher_force.publish(force)
-
-        force_msg = WrenchStamped()
-
-        force_msg.header.stamp = self.get_clock().now().to_msg()
-        force_msg.header.frame_id = frame_id
-
-        force_msg.wrench.force.x = external_force[id_force].linear[0] * 0.01
-        force_msg.wrench.force.y = external_force[id_force].linear[1] * 0.01
-        force_msg.wrench.force.z = external_force[id_force].linear[2] * 0.01
-        force_msg.wrench.torque.x = external_force[id_force].angular[0]
-        force_msg.wrench.torque.y = external_force[id_force].angular[1]
-        force_msg.wrench.torque.z = external_force[id_force].angular[2]
+        external_force_array = MarkerArray()
         
+        for frame in frames_names:
+
+            id_force = self.robot.get_parent_joint_id(frame["name"])
+            position = self.robot.get_joint_placement(id_force)
+            arrow_force = Marker()
+
+            arrow_force.header.frame_id = "base_link" 
+            arrow_force.header.stamp = self.get_clock().now().to_msg()
+            arrow_force.ns = "external_force"
+            arrow_force.id = id_force
+            arrow_force.type = Marker.ARROW
+
+            # add the arrow if the frame is checked or delete it if not
+            if frame["checked"]:
+                arrow_force.action = Marker.ADD
+            else:
+                arrow_force.action = Marker.DELETE
+
+            arrow_force.scale.x = 0.20   # Length of the arrow
+            arrow_force.scale.y = 0.05   # Width of the arrow
+            arrow_force.scale.z = 0.05   # Height of the arrow
+            arrow_force.color.a = 1.0  # Alpha
+            arrow_force.color.r = 0.0
+            arrow_force.color.g = 0.0  # Green
+            arrow_force.color.b = 1.0
+
+            # Set the position of the arrow at the joint placement
+            arrow_force.pose.position.x = position[0]
+            arrow_force.pose.position.y = position[1]
+            arrow_force.pose.position.z = position[2]
+            # Set the direction of the arrow downwards
+            arrow_force.pose.orientation.x = 0.0
+            arrow_force.pose.orientation.y = 0.7071
+            arrow_force.pose.orientation.z = 0.0
+            arrow_force.pose.orientation.w = 0.7071
+            
+            external_force_array.markers.append(arrow_force)
+        
+        self.publisher_force.publish(external_force_array)
 
 
-        self.publisher_force.publish(force_msg)
 
 def main(args=None):
     rclpy.init(args=args)
