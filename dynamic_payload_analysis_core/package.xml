@@ -5,7 +5,7 @@
   <version>0.0.0</version>
   <description>Core package with calculation for torques calculator</description>
   <maintainer email="enrimoro003@gmail.com">morolinux</maintainer>
-  <license>TODO: License declaration</license>
+  <license>Apache License 2.0</license>
 
   <test_depend>ament_copyright</test_depend>
   <test_depend>ament_flake8</test_depend>
