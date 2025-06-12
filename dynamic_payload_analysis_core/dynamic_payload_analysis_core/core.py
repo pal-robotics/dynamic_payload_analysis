@@ -61,13 +61,13 @@ class TorqueCalculator:
         return tau
     
 
-    def create_ext_force(self, mass : float, frame_name : str, q : np.ndarray) -> np.ndarray[pin.Force]:
+    def create_ext_force(self, mass : float, frame_name : Union[str | np.ndarray], q : np.ndarray) -> np.ndarray[pin.Force]:
         """
         Create external forces vector based on the mass and frame ID.
         The resulting vector will contain the force applied to the specified frame and with the local orientation of the parent joint.
         
         :param mass: Mass of the object to apply the force to.
-        :param frame_id: Frame ID where the force is applied.
+        :param frame_name: Frame name where the force is applied or vector of frame names where the forces is applied.
         :return: External force vector.
         """
         if mass < 0:
@@ -84,23 +84,39 @@ class TorqueCalculator:
         # Initialize external forces array
         fext = [pin.Force(np.zeros(6)) for _ in range(self.model.njoints)]
         
-        self.update_configuration(q) 
+        self.update_configuration(q)
 
-        # Get the frame ID and joint ID from the frame name
-        frame_id = self.model.getFrameId(frame_name)
-        joint_id = self.model.frames[frame_id].parentJoint
+        # Check if frame_name is a single string or an array of strings
+        if isinstance(frame_name, str):
+             # Get the frame ID and joint ID from the frame name
+            frame_id = self.model.getFrameId(frame_name)
+            joint_id = self.model.frames[frame_id].parentJoint
 
-        # force expressed in the world frame (gravity force in z axis)
-        ext_force_world = pin.Force(np.array([0.0, 0.0, mass * -9.81]), np.array([0.0, 0.0, 0.0])) 
+            # force expressed in the world frame (gravity force in z axis)
+            ext_force_world = pin.Force(np.array([0.0, 0.0, mass * -9.81]), np.array([0.0, 0.0, 0.0])) 
 
-        # placement of the frame in the world frame
-        frame_placement = self.data.oMf[frame_id]
-        #print(f"Frame placement: {frame_placement}")
-        
-        # Convert the external force expressed in the world frame to the orientation of the joint frame where the force is applied
-        fext[joint_id] = self.data.oMi[joint_id].actInv(ext_force_world)
-        # Zero out the last 3 components (torques) of the force to ensure only the force in z axis (gravity force) is applied
-        fext[joint_id].angular = np.zeros(3) # TODO : make it more efficient 
+            # placement of the frame in the world frame
+            #frame_placement = self.data.oMf[frame_id]
+            #print(f"Frame placement: {frame_placement}")
+            
+            # Convert the external force expressed in the world frame to the orientation of the joint frame where the force is applied
+            fext[joint_id] = self.data.oMi[joint_id].actInv(ext_force_world)
+            # Zero out the last 3 components (torques) of the force to ensure only the force in z axis (gravity force) is applied
+            fext[joint_id].angular = np.zeros(3) # TODO : make it more efficient 
+
+        else:
+            for frame in frame_name:
+                frame_id = self.model.getFrameId(frame)
+                joint_id = self.model.frames[frame_id].parentJoint
+
+                # force expressed in the world frame (gravity force in z axis)
+                ext_force_world = pin.Force(np.array([0.0, 0.0, mass * -9.81]), np.array([0.0, 0.0, 0.0]))
+                # Convert the external force expressed in the world frame to the orientation of the joint frame where the force is applied
+                fext[joint_id] = self.data.oMi[joint_id].actInv(ext_force_world)
+                # Zero out the last 3 components (torques) of the force to ensure only the force in z axis (gravity force) is applied
+                fext[joint_id].angular = np.zeros(3)
+
+       
         
         return fext
 
