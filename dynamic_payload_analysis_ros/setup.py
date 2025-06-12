@@ -21,6 +21,7 @@ setup(
     entry_points={
         'console_scripts': [
             'node_rviz_visualization = dynamic_payload_analysis_ros.rviz_visualization:main',
+            'node_rviz_visualization_menu = dynamic_payload_analysis_ros.rviz_visualization_menu:main',
         ],
     },
 )

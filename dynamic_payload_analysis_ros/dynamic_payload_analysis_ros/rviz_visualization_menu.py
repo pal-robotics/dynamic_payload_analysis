@@ -8,7 +8,7 @@ from sensor_msgs.msg import JointState
 from dynamic_payload_analysis_core.core import TorqueCalculator
 import numpy as np
 from visualization_msgs.msg import Marker, MarkerArray
-
+from dynamic_payload_analysis_ros.menu_visual import MenuPayload
 
 
 class RobotDescriptionSubscriber(Node):
@@ -20,6 +20,9 @@ class RobotDescriptionSubscriber(Node):
             self.robot_description_callback,
             qos_profile=rclpy.qos.QoSProfile( durability=rclpy.qos.DurabilityPolicy.TRANSIENT_LOCAL, depth = 1)
         )
+
+        # menu for selecting frames to apply payload
+        self.menu = MenuPayload(self)
 
         # Publisher for external force
         self.publisher_force = self.create_publisher(WrenchStamped, '/external_force', 10)
@@ -35,6 +38,8 @@ class RobotDescriptionSubscriber(Node):
         # frame where the external force is applied
         self.frame_id = "arm_left_7_link"
 
+        self.external_force = None
+
         self.get_logger().info('Robot description subscriber node started')
 
 
@@ -44,6 +49,10 @@ class RobotDescriptionSubscriber(Node):
         self.robot = TorqueCalculator(robot_description = msg.data)
         self.robot.print_active_joint()
         self.robot.print_frames()
+        
+        # Add the frame to the menu for selecting where to apply the payload
+        for frame in self.robot.get_active_frames():
+            self.menu.insert(frame)
 
         # self.robot.print_configuration()
 
@@ -59,8 +68,13 @@ class RobotDescriptionSubscriber(Node):
 
 
             # Compute inverse dynamics with external force
-            external_force = self.robot.create_ext_force(mass=4.0, frame_name=self.frame_id, q=q)
-            tau = self.robot.compute_inverse_dynamics(q, v, a, extForce=external_force)
+            for frame in self.menu.get_item_state():
+                if frame['checked']:
+                    self.frame_id = frame['name']
+                    self.external_force = self.robot.create_ext_force(mass=4.0, frame_name=self.frame_id, q=q)
+                
+
+            tau = self.robot.compute_inverse_dynamics(q, v, a, extForce=self.external_force)
 
             status_efforts = self.robot.check_effort_limits(tau)
             self.robot.print_torques(tau)
@@ -71,7 +85,8 @@ class RobotDescriptionSubscriber(Node):
             self.publish_rviz_torque(tau, status_torques=status_efforts ,joints_position=joints_position)
 
             # publish the external force
-            self.publish_payload_force(self.frame_id, external_force)
+            if self.external_force is not None:
+                self.publish_payload_force(self.frame_id, self.external_force)
 
 
     def publish_rviz_torque(self, torque: np.ndarray, status_torques : np.ndarray, joints_position: np.ndarray):
@@ -91,7 +106,12 @@ class RobotDescriptionSubscriber(Node):
             marker.ns = "torque_visualization"
             marker.id = i
             marker.type = Marker.TEXT_VIEW_FACING
-            marker.text = f"{joint['name']}: {t:.2f} Nm"
+            # Set the text based on the joint type
+            if joint['type'] == 'JointModelPZ':
+                marker.text = f"{joint['name']}: {t:.2f} N"
+            else:
+                marker.text = f"{joint['name']}: {t:.2f} Nm"
+
             marker.action = Marker.ADD
             marker.pose.position.x = joint['x']
             marker.pose.position.y = joint['y']
@@ -124,23 +144,49 @@ class RobotDescriptionSubscriber(Node):
             external_force (np.ndarray): The external force to be published
         """
         id_force = self.robot.get_parent_joint_id(frame_id)
+        position = self.robot.get_joint_placement(id_force)
+
+        # force = Marker()
+        # force.header.frame_id = frame_id
+        # force.header.stamp = self.get_clock().now().to_msg()
+        # force.ns = "external_force"
+        # force.id = id_force
+        # force.type = Marker.ARROW
+        # force.action = Marker.ADD
+        # force.scale.x = 0.20   
+        # force.scale.y = 0.05  
+        # force.scale.z = 0.05 
+        # force.color.a = 1.0  # Alpha
+        # force.color.r = 0.0  # Red
+        # force.color.g = 0.0
+        # force.color.b = 1.0  # Blue
+        # # Set the direction of the arrow based on the external force
+        # force.pose.orientation.x = external_force[id_force].linear[0]
+        # force.pose.orientation.y = external_force[id_force].linear[1]
+        # force.pose.orientation.z = external_force[id_force].linear[2]
+        # force.pose.orientation.w = 0.0  # Set to 1.0 for a straight arrow
+        # self.publisher_force.publish(force)
 
         force_msg = WrenchStamped()
+
         force_msg.header.stamp = self.get_clock().now().to_msg()
         force_msg.header.frame_id = frame_id
 
-        force_msg.wrench.force.x = external_force[id_force].linear[0]
-        force_msg.wrench.force.y = external_force[id_force].linear[1]
-        force_msg.wrench.force.z = external_force[id_force].linear[2]
+        force_msg.wrench.force.x = external_force[id_force].linear[0] * 0.01
+        force_msg.wrench.force.y = external_force[id_force].linear[1] * 0.01
+        force_msg.wrench.force.z = external_force[id_force].linear[2] * 0.01
         force_msg.wrench.torque.x = external_force[id_force].angular[0]
         force_msg.wrench.torque.y = external_force[id_force].angular[1]
         force_msg.wrench.torque.z = external_force[id_force].angular[2]
+        
+
 
         self.publisher_force.publish(force_msg)
 
 def main(args=None):
     rclpy.init(args=args)
     node = RobotDescriptionSubscriber()
+
     
     try:
         rclpy.spin(node)
