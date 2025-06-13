@@ -26,7 +26,8 @@ from dynamic_payload_analysis_ros.menu_visual import MenuPayload
 
 
 #TODO : Add payload mass selection in the menu
-#TODO : Add possibility to select multiple frames with payload
+#TODO : Remove mimim joints in label visualization
+
 
 class RobotDescriptionSubscriber(Node):
     def __init__(self):
@@ -67,7 +68,7 @@ class RobotDescriptionSubscriber(Node):
         self.robot.print_active_joint()
         self.robot.print_frames()
         
-        # Add the frame to the menu for selecting where to apply the payload
+        # Add the frame to the menu for payload selection
         for frame in self.robot.get_active_frames():
             self.menu.insert(frame)
 
@@ -103,18 +104,20 @@ class RobotDescriptionSubscriber(Node):
 
             # get the active frames and joints positions
             frames = self.robot.get_active_frames()
+
+            # get the positions of the joints where the torques are applied
             joints_position = self.robot.get_joints_placements(q)
 
             # Publish the torques in RViz
-            self.publish_rviz_torque(tau, status_torques=status_efforts ,joints_position=joints_position)
+            self.publish_label_torques(tau, status_torques=status_efforts ,joints_position=joints_position)
 
-            # publish the external force
+            # publish the external force as arrows in RViz
             self.publish_payload_force(self.menu.get_item_state())
 
 
-    def publish_rviz_torque(self, torque: np.ndarray, status_torques : np.ndarray, joints_position: np.ndarray):
+    def publish_label_torques(self, torque: np.ndarray, status_torques : np.ndarray, joints_position: np.ndarray):
         """
-        Publish the torque on the robot in RViz.
+        Publish the torque with labels on the robot in RViz.
 
         Args:
             torque (np.ndarray): The torque to be published
@@ -123,36 +126,38 @@ class RobotDescriptionSubscriber(Node):
         """
         marker_array = MarkerArray()
         for i, (t, joint) in enumerate(zip(torque, joints_position)):
-            marker = Marker()
-            marker.header.frame_id = "base_link"
-            marker.header.stamp = self.get_clock().now().to_msg()
-            marker.ns = "torque_visualization"
-            marker.id = i
-            marker.type = Marker.TEXT_VIEW_FACING
-            # Set the text based on the joint type
-            if joint['type'] == 'JointModelPZ':
-                marker.text = f"{joint['name']}: {t:.2f} N"
-            else:
-                marker.text = f"{joint['name']}: {t:.2f} Nm"
+            # remove the gripper joints from the visualization TODO: make it more general (with MIMIC joints)
+            if "gripper" not in joint['name']:
+                marker = Marker()
+                marker.header.frame_id = "base_link"
+                marker.header.stamp = self.get_clock().now().to_msg()
+                marker.ns = "torque_visualization"
+                marker.id = i
+                marker.type = Marker.TEXT_VIEW_FACING
+                # Set the text based on the joint type
+                if joint['type'] == 'JointModelPZ':
+                    marker.text = f"{joint['name']}: {t:.2f} N"
+                else:
+                    marker.text = f"{joint['name']}: {t:.2f} Nm"
 
-            marker.action = Marker.ADD
-            marker.pose.position.x = joint['x']
-            marker.pose.position.y = joint['y']
-            marker.pose.position.z = joint['z']
-            marker.pose.orientation.w = 1.0
-            marker.scale.x = 0.03
-            marker.scale.y = 0.03
-            marker.scale.z = 0.03
-            marker.color.a = 1.0  # Alpha
-            if status_torques[i]:
-                marker.color.r = 0.0  # Red
-                marker.color.g = 1.0  # Green
-                marker.color.b = 0.0  # Blue
-            else:
-                marker.color.r = 1.0  # Red
-                marker.color.g = 0.0  # Green
-                marker.color.b = 0.0  # Blue
-            marker_array.markers.append(marker)
+                marker.action = Marker.ADD
+                marker.pose.position.x = joint['x']
+                marker.pose.position.y = joint['y']
+                marker.pose.position.z = joint['z']
+                marker.pose.orientation.w = 1.0
+                marker.scale.x = 0.03
+                marker.scale.y = 0.03
+                marker.scale.z = 0.03
+                marker.color.a = 1.0  # Alpha
+                if status_torques[i]:
+                    marker.color.r = 0.0  # Red
+                    marker.color.g = 1.0  # Green
+                    marker.color.b = 0.0  # Blue
+                else:
+                    marker.color.r = 1.0  # Red
+                    marker.color.g = 0.0  # Green
+                    marker.color.b = 0.0  # Blue
+                marker_array.markers.append(marker)
         
         self.publisher_rviz_torque.publish(marker_array)
 
@@ -163,15 +168,14 @@ class RobotDescriptionSubscriber(Node):
         Publish the gravity force on the frame with id `id_force`.
 
         Args:
-            frame_id (str): The frame where the external force is applied.
-            external_force (np.ndarray): The external force to be published
+            frame_names : The frames where the external forces is applied.
         """
         external_force_array = MarkerArray()
         
         for frame in frames_names:
 
             id_force = self.robot.get_parent_joint_id(frame["name"])
-            position = self.robot.get_joint_placement(id_force)
+            joint_position = self.robot.get_joint_placement(id_force)
             arrow_force = Marker()
 
             arrow_force.header.frame_id = "base_link" 
@@ -195,9 +199,9 @@ class RobotDescriptionSubscriber(Node):
             arrow_force.color.b = 1.0
 
             # Set the position of the arrow at the joint placement
-            arrow_force.pose.position.x = position[0]
-            arrow_force.pose.position.y = position[1]
-            arrow_force.pose.position.z = position[2]
+            arrow_force.pose.position.x = joint_position["x"]
+            arrow_force.pose.position.y = joint_position["y"]
+            arrow_force.pose.position.z = joint_position["z"]
             # Set the direction of the arrow downwards
             arrow_force.pose.orientation.x = 0.0
             arrow_force.pose.orientation.y = 0.7071
