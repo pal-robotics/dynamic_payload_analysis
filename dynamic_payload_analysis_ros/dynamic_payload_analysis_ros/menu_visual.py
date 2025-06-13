@@ -29,14 +29,21 @@ class MenuPayload():
     def __init__(self, node):
         # create server for interactive markers
         self.server = InteractiveMarkerServer(node, 'menu_frames')
-        # array to store the checked frames
-        self.checked_frames = np.array([],dtype=object)
-        # position of the marker in rviz
-        self.marker_pos = 2
+
+        # array to store the checked and unchecked frames
+        self.frames_selection = np.array([],dtype=object)
+
         # create handler for menu
         self.menu_handler = MenuHandler()
-        # insert the root menu item
-        self.root = self.menu_handler.insert('Select where to apply payload')
+
+        #current managed frame
+        self.current_frame = None
+
+        # payload mass selection array
+        self.payload_selection = np.array([0.1, 0.2, 0.3, 0.4, 0.5, 1, 1.5, 1.8, 2.0, 2.5, 3.0, 3.5], dtype=float)
+
+        # insert the root menu items
+        self.root_frames = self.menu_handler.insert('Select where to apply payload')
         
         self.make_menu_marker('menu_frames')
         # add server to menu and apply changes
@@ -47,28 +54,39 @@ class MenuPayload():
         """
         Insert a new item in the checkbox menu.
         """
-        last_item = self.menu_handler.insert(name, parent=self.root, callback=self.callback_selection)
+        last_item = self.menu_handler.insert(name, parent=self.root_frames, callback=self.callback_selection)
         self.menu_handler.setCheckState(last_item, MenuHandler.UNCHECKED)
         self.menu_handler.setVisible(last_item, True)
         
-        self.checked_frames = np.append(self.checked_frames, {"name": name, "checked" : False} )
+        # add the item to the checked frames array in order to keep track of the checked items
+        self.frames_selection = np.append(self.frames_selection, {"name": name, "checked" : False, "payload" : 0.0} )
+
         self.menu_handler.reApply(self.server)
         self.server.applyChanges()
         
         
     def callback_selection(self, feedback):
         """
-        Callback for menu selection
+        Callback for menu selection to change the check state of the selected item.
         """
         # change the check state of the selected item
         handle = feedback.menu_entry_id
         title = self.menu_handler.getTitle(handle)
+
         if self.menu_handler.getCheckState(handle) == MenuHandler.CHECKED:
-            self.menu_handler.setCheckState(handle, MenuHandler.UNCHECKED)
+            # remove the item from the menu of payload selection 
+            self.manage_payload_menu(handle, False)
+            # update the frames_selection array to set the item as unchecked
             self.update_item(title, False)
+
+            self.menu_handler.setCheckState(handle, MenuHandler.UNCHECKED)
         else:
-            self.menu_handler.setCheckState(handle, MenuHandler.CHECKED)
+            # add the item to the menu of payload selection
+            self.manage_payload_menu(handle, True)
+            # update the frames_selection array to set the item as checked
             self.update_item(title, True)
+
+            self.menu_handler.setCheckState(handle, MenuHandler.CHECKED)
         
         # update the menu state
         self.menu_handler.reApply(self.server)
@@ -87,11 +105,82 @@ class MenuPayload():
             status (bool): New checked state of the item.
         """
         
-        for item in self.checked_frames:
+        for item in self.frames_selection:
             if item['name'] == name:
                 item['checked'] = status
                 break
+
+    def update_payload(self, name, payload: float):
+        """
+        Update the payload mass of an item in the array.
+        
+        Args:
+            name (str): Name of the item to update.
+            payload (float): New payload mass of the item.
+        """
+        
+        for item in self.frames_selection:
+            if item['name'] == name:
+                item['payload'] = payload
+                break
+
+    def remove_selection_payload(self, handler):
+        """
+        Remove the payload selection from the array.
+        
+        Args:
+            handler (str): frame handler.
+        """
+        
+        for item in handler.sub_entries:
+            self.menu_handler.setVisible(item, False)
+
+
+    def manage_payload_menu(self, menu_entry_id, action: bool):
+        """
+        Add or remove a new checked frame to the payload menu.
+        
+        Args:
+            menu_entry_id : ID of the menu entry to add or remove.
+            action (bool): True to add the item, False to remove it.
+        """
+        name = self.menu_handler.getTitle(menu_entry_id)
+        # if the action is to add the item, we need to insert the payload mass selection items
+        if action:
+            for payload in self.payload_selection:
+                # insert the payload mass selection items
+                last_entry = self.menu_handler.insert(f"{payload} kg", parent=menu_entry_id, callback=self.update_payload_selection)
+                self.menu_handler.setCheckState(last_entry, MenuHandler.UNCHECKED)
+                self.menu_handler.setVisible(last_entry, True)
+
+        # if the action is to remove the item, we need to remove the payload mass selection items
+        else:
+            # remove the payload mass selection items
+            self.remove_selection_payload(menu_entry_id)
+        
+        self.menu_handler.reApply(self.server)
+        self.server.applyChanges()
     
+    def update_payload_selection(self, feedback):
+        """
+        Callback for payload selection to change the current payload.
+        
+        Args:
+            feedback: Feedback from the menu selection.
+        """
+        handle = feedback.menu_entry_id
+        title = self.menu_handler.getTitle(handle)
+        
+        if self.menu_handler.getCheckState(handle) == MenuHandler.CHECKED:
+            self.menu_handler.setCheckState(handle, MenuHandler.UNCHECKED)
+            #self.update_payload(name_frame, 0.0)
+        else:
+            self.menu_handler.setCheckState(handle, MenuHandler.CHECKED)
+            #self.update_payload(name_frame, float(title.split()[0]))  # Extract the payload mass from the title
+        
+        self.menu_handler.reApply(self.server)
+        self.server.applyChanges()
+
 
     def get_item_state(self) -> np.ndarray:
         """
@@ -100,7 +189,7 @@ class MenuPayload():
         Returns:
             np.ndarray: array of checked frames
         """
-        return self.checked_frames
+        return self.frames_selection
     
 
     def make_box(self, msg):
@@ -131,7 +220,7 @@ class MenuPayload():
         
         int_marker = InteractiveMarker()
         int_marker.header.frame_id = 'base_link'
-        int_marker.pose.position.z = 1.0 * self.marker_pos
+        int_marker.pose.position.z = 2.0
         int_marker.scale = 0.5
         
         
