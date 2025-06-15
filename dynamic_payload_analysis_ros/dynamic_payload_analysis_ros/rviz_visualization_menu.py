@@ -26,7 +26,6 @@ from dynamic_payload_analysis_ros.menu_visual import MenuPayload
 
 
 #TODO : Add payload mass selection in the menu
-#TODO : Remove mimim joints in label visualization
 
 
 class RobotDescriptionSubscriber(Node):
@@ -70,7 +69,7 @@ class RobotDescriptionSubscriber(Node):
         
         # Add the frame to the menu for payload selection
         for frame in self.robot.get_active_frames():
-            self.menu.insert(frame)
+            self.menu.insert_frame(frame)
 
         # self.robot.print_configuration()
 
@@ -102,7 +101,7 @@ class RobotDescriptionSubscriber(Node):
             # print the torques
             self.robot.print_torques(tau)
 
-            # get the active frames and joints positions
+            # get the active frames
             frames = self.robot.get_active_frames()
 
             # get the positions of the joints where the torques are applied
@@ -218,7 +217,6 @@ def main(args=None):
     rclpy.init(args=args)
     node = RobotDescriptionSubscriber()
 
-    
     try:
         rclpy.spin(node)
     except KeyboardInterrupt:

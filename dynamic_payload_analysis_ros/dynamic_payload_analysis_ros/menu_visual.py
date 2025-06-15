@@ -30,7 +30,7 @@ class MenuPayload():
         # create server for interactive markers
         self.server = InteractiveMarkerServer(node, 'menu_frames')
 
-        # array to store the checked and unchecked frames
+        # array to store the checked orunchecked frames and payload selection
         self.frames_selection = np.array([],dtype=object)
 
         # create handler for menu
@@ -44,15 +44,20 @@ class MenuPayload():
 
         # insert the root menu items
         self.root_frames = self.menu_handler.insert('Select where to apply payload')
+        # insert the reset payload button 
+        self.reset = self.menu_handler.insert('Reset payloads', parent=self.root_frames, callback=self.callback_reset)
         
         self.make_menu_marker('menu_frames')
         # add server to menu and apply changes
         self.menu_handler.apply(self.server, 'menu_frames')
         self.server.applyChanges()
 
-    def insert(self, name):
+    def insert_frame(self, name):
         """
-        Insert a new item in the checkbox menu.
+        Insert a new item(frame) in the checkbox menu of frames.
+
+        Args:
+            name (str) : name of the frame  
         """
         last_item = self.menu_handler.insert(name, parent=self.root_frames, callback=self.callback_selection)
         self.menu_handler.setCheckState(last_item, MenuHandler.UNCHECKED)
@@ -61,32 +66,57 @@ class MenuPayload():
         # add the item to the checked frames array in order to keep track of the checked items
         self.frames_selection = np.append(self.frames_selection, {"name": name, "checked" : False, "payload" : 0.0} )
 
+        # apply changes
         self.menu_handler.reApply(self.server)
         self.server.applyChanges()
         
-        
+
+    def callback_reset(self, feedback):
+        """
+        Callback for reset menu selection to remove all checked items from the menu.
+        """
+        # remove all checked items from the array
+        for i, item in enumerate(self.frames_selection):
+            if item['checked']:
+                item = {"name": item['name'], "checked": False, "payload": 0.0}
+                self.frames_selection[i] = item
+                
+        # reset the frames selection menu (i = number of entry, item = object with name, sub entries, etc.)
+        for i, item in self.menu_handler.entry_contexts_.items():
+            if i == 1:
+                # skip the root item (payload reset)
+                continue
+            
+            # check if the item(frame) has sub entries (payloads selection)
+            if item.sub_entries:
+                # if the frame has payloads selection, we need to remove it
+                for sub_item in item.sub_entries:
+                    self.menu_handler.setVisible(sub_item, False)
+                    self.menu_handler.setCheckState(sub_item, MenuHandler.UNCHECKED)
+                
+            # set the checked of frame to unchecked 
+            self.menu_handler.setCheckState(i,MenuHandler.UNCHECKED)
+
+        # reapply the menu handler and server changes
+        self.menu_handler.reApply(self.server)
+        self.server.applyChanges()
+
+    
     def callback_selection(self, feedback):
         """
-        Callback for menu selection to change the check state of the selected item.
+        Callback for menu selection to change the check state of the selected item(frame).
         """
-        # change the check state of the selected item
+        # get name of the frame
         handle = feedback.menu_entry_id
         title = self.menu_handler.getTitle(handle)
 
-        if self.menu_handler.getCheckState(handle) == MenuHandler.CHECKED:
-            # remove the item from the menu of payload selection 
-            self.manage_payload_menu(handle, False)
-            # update the frames_selection array to set the item as unchecked
-            self.update_item(title, False)
-
-            self.menu_handler.setCheckState(handle, MenuHandler.UNCHECKED)
-        else:
-            # add the item to the menu of payload selection
-            self.manage_payload_menu(handle, True)
-            # update the frames_selection array to set the item as checked
-            self.update_item(title, True)
-
-            self.menu_handler.setCheckState(handle, MenuHandler.CHECKED)
+        # add payloads selection as a submenu
+        self.manage_payload_menu(handle)
+        # update the frames_selection array to set the item as checked
+        self.update_item(title, True)
+        
+        # set the checkbox as checked
+        self.menu_handler.setCheckState(handle, MenuHandler.CHECKED)
         
         # update the menu state
         self.menu_handler.reApply(self.server)
@@ -96,27 +126,28 @@ class MenuPayload():
         print(f"{self.get_item_state()} \n")
     
 
-    def update_item(self, name, status: bool):
+    def update_item(self, name, check: bool):
         """
-        Update the state of an item in the array.
+        Update the state of an item(frame) in the array.
         
         Args:
-            name (str): Name of the item to update.
-            status (bool): New checked state of the item.
+            name (str): Name of the item(frame) to update.
+            check (bool): New state of the item.
         """
         
         for item in self.frames_selection:
             if item['name'] == name:
-                item['checked'] = status
+                item['checked'] = check
                 break
+
 
     def update_payload(self, name, payload: float):
         """
         Update the payload mass of an item in the array.
         
         Args:
-            name (str): Name of the item to update.
-            payload (float): New payload mass of the item.
+            name (str): Name of the item(frame) to update.
+            payload (float): New payload mass that act on the frame.
         """
         
         for item in self.frames_selection:
@@ -124,43 +155,26 @@ class MenuPayload():
                 item['payload'] = payload
                 break
 
-    def remove_selection_payload(self, handler):
+
+    def manage_payload_menu(self, menu_entry_id):
         """
-        Remove the payload selection from the array.
-        
+        Add payload selection items as a sub-menu for the specified menu entry.
+
         Args:
-            handler (str): frame handler.
+            menu_entry_id : ID of the menu entry.
         """
+        # insert as a sub menu all the payload stored in the array
+        for payload in self.payload_selection:
+            # insert the payload mass selection items (command = str(menu_entry_id) is used to identify the parent menu entry)
+            last_entry = self.menu_handler.insert(f"{payload} kg", parent=menu_entry_id, command = str(menu_entry_id), callback=self.update_payload_selection)
+            self.menu_handler.setCheckState(last_entry, MenuHandler.UNCHECKED)
+            self.menu_handler.setVisible(last_entry, True)
         
-        for item in handler.sub_entries:
-            self.menu_handler.setVisible(item, False)
-
-
-    def manage_payload_menu(self, menu_entry_id, action: bool):
-        """
-        Add or remove a new checked frame to the payload menu.
-        
-        Args:
-            menu_entry_id : ID of the menu entry to add or remove.
-            action (bool): True to add the item, False to remove it.
-        """
-        name = self.menu_handler.getTitle(menu_entry_id)
-        # if the action is to add the item, we need to insert the payload mass selection items
-        if action:
-            for payload in self.payload_selection:
-                # insert the payload mass selection items
-                last_entry = self.menu_handler.insert(f"{payload} kg", parent=menu_entry_id, callback=self.update_payload_selection)
-                self.menu_handler.setCheckState(last_entry, MenuHandler.UNCHECKED)
-                self.menu_handler.setVisible(last_entry, True)
-
-        # if the action is to remove the item, we need to remove the payload mass selection items
-        else:
-            # remove the payload mass selection items
-            self.remove_selection_payload(menu_entry_id)
-        
+        # apply changes
         self.menu_handler.reApply(self.server)
         self.server.applyChanges()
     
+
     def update_payload_selection(self, feedback):
         """
         Callback for payload selection to change the current payload.
@@ -168,16 +182,35 @@ class MenuPayload():
         Args:
             feedback: Feedback from the menu selection.
         """
+        # get the handle of the selected item (id)
         handle = feedback.menu_entry_id
+        # get the title of the selected item (it contains number of kg)
         title = self.menu_handler.getTitle(handle)
+        # get the entry object from the menu handler with all the informations about the item (command field is used to store the parent id)
+        payload_context = self.menu_handler.entry_contexts_[handle]
+
+        # get the parent id of the selected payload stored in the command field
+        parent_id = int(payload_context.command)
+        # get the entry object of the parent
+        parent_context = self.menu_handler.entry_contexts_[parent_id]
+        # get the name of the parent item (frame name)
+        name_parent = self.menu_handler.getTitle(parent_id)
         
-        if self.menu_handler.getCheckState(handle) == MenuHandler.CHECKED:
-            self.menu_handler.setCheckState(handle, MenuHandler.UNCHECKED)
-            #self.update_payload(name_frame, 0.0)
-        else:
-            self.menu_handler.setCheckState(handle, MenuHandler.CHECKED)
-            #self.update_payload(name_frame, float(title.split()[0]))  # Extract the payload mass from the title
+        # reset all the selections in the payload sub-menu
+        # check if a item is already checked, if so remove it and set to unchecked to prevent multiple payload selection in the same menu
+        for item in parent_context.sub_entries:
+            # check if the item is checked
+            if self.menu_handler.getCheckState(item) == MenuHandler.CHECKED:
+                # if the item is already checked, we need to uncheck it and set the payload to 0.0
+                self.menu_handler.setCheckState(item, MenuHandler.UNCHECKED)
+                self.update_payload(name_parent, 0.0)
+                
+        # set the selected payload checkbox as checked
+        self.menu_handler.setCheckState(handle, MenuHandler.CHECKED)
+        # uppate the array with the new payload 
+        self.update_payload(name_parent, float(title.split()[0]))  # Extract the payload mass from the title
         
+        # apply changes
         self.menu_handler.reApply(self.server)
         self.server.applyChanges()
 
@@ -192,7 +225,10 @@ class MenuPayload():
         return self.frames_selection
     
 
-    def make_box(self, msg):
+    def make_label(self, msg):
+        """
+        Create the label used to click over in rviz
+        """
         marker = Marker()
 
         marker.type = Marker.TEXT_VIEW_FACING
@@ -207,27 +243,31 @@ class MenuPayload():
 
         return marker
     
-    def make_box_control(self, msg):
+    def make_label_control(self, msg):
         control = InteractiveMarkerControl()
         control.always_visible = True
-        control.markers.append(self.make_box(msg))
+        control.markers.append(self.make_label(msg))
         msg.controls.append(control)
         
         return control
 
 
     def make_empty_marker(self, dummyBox=True):
-        
+        """
+        Create interactive marker
+        """
         int_marker = InteractiveMarker()
         int_marker.header.frame_id = 'base_link'
         int_marker.pose.position.z = 2.0
         int_marker.scale = 0.5
         
-        
         return int_marker
 
 
     def make_menu_marker(self, name):
+        """
+        Create interactive menu 
+        """
         int_marker = self.make_empty_marker()
         int_marker.name = name
 
@@ -236,7 +276,7 @@ class MenuPayload():
         control.interaction_mode = InteractiveMarkerControl.BUTTON
         control.always_visible = True
 
-        control.markers.append(self.make_box(int_marker))
+        control.markers.append(self.make_label(int_marker))
         int_marker.controls.append(control)
 
         self.server.insert(int_marker)
