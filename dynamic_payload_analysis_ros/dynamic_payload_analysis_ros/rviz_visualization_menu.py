@@ -86,10 +86,13 @@ class RobotDescriptionSubscriber(Node):
                     
             # create the array with only the checked frames (with external force applied)
             self.checked_frames = np.array([check_frame["name"] for check_frame in self.menu.get_item_state() if check_frame['checked']])
-
+            
             # if there are no checked frames, set the external force to None
             if len(self.checked_frames) != 0:
-                self.external_force = self.robot.create_ext_force(mass=4.0, frame_name=self.checked_frames, q=q)
+                # create the array with the masses of the checked frames
+                self.masses = np.array([check_frame["payload"] for check_frame in self.menu.get_item_state() if check_frame['checked']])
+                # create the external force with the masses and the checked frames
+                self.external_force = self.robot.create_ext_force(masses=self.masses, frame_name=self.checked_frames, q=q)
             else:
                 self.external_force = None
 
