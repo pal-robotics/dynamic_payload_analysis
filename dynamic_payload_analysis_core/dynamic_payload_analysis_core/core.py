@@ -61,17 +61,18 @@ class TorqueCalculator:
         return tau
     
 
-    def create_ext_force(self, mass : float, frame_name : Union[str | np.ndarray], q : np.ndarray) -> np.ndarray[pin.Force]:
+    def create_ext_force(self, masses : Union[float, np.ndarray] , frame_name : Union[str | np.ndarray], q : np.ndarray) -> np.ndarray[pin.Force]:
         """
         Create external forces vector based on the mass and frame ID.
         The resulting vector will contain the force applied to the specified frame and with the local orientation of the parent joint.
         
-        :param mass: Mass of the object to apply the force to.
-        :param frame_name: Frame name where the force is applied or vector of frame names where the forces is applied.
+        :param masses (float, np.ndarray) : Mass of the object to apply the force to or vector with masses related to frames names.
+        :param frame_name(str , np.ndarray) : Frame name where the force is applied or vector of frame names where the forces is applied.
         :return: External force vector.
         """
-        if mass < 0:
-            raise ValueError("Mass must be a positive value")
+        if isinstance(masses, float):
+            if masses < 0:
+                raise ValueError("Mass must be a positive value")
         
         if frame_name is None:
             raise ValueError("Frame name must be provided")
@@ -93,7 +94,7 @@ class TorqueCalculator:
             joint_id = self.model.frames[frame_id].parentJoint
 
             # force expressed in the world frame (gravity force in z axis)
-            ext_force_world = pin.Force(np.array([0.0, 0.0, mass * -9.81]), np.array([0.0, 0.0, 0.0])) 
+            ext_force_world = pin.Force(np.array([0.0, 0.0, masses * -9.81]), np.array([0.0, 0.0, 0.0])) 
 
             # placement of the frame in the world frame
             #frame_placement = self.data.oMf[frame_id]
@@ -105,7 +106,7 @@ class TorqueCalculator:
             fext[joint_id].angular = np.zeros(3) # TODO : make it more efficient 
 
         else:
-            for frame in frame_name:
+            for mass, frame in zip(masses,frame_name):
                 frame_id = self.model.getFrameId(frame)
                 joint_id = self.model.frames[frame_id].parentJoint
 
