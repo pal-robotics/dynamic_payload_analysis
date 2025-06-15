@@ -19,6 +19,7 @@ import numpy as np
 import math
 from typing import Union
 from pathlib import Path
+from numpy.linalg import norm, solve
 
 class TorqueCalculator:
     def __init__(self, robot_description : Union[str, Path]):
@@ -237,6 +238,114 @@ class TorqueCalculator:
         
         return F_max[2] # get the force in z axis of the world frame, which is the maximum force payload
     
+
+    def compute_inverse_kinematics(self, q : np.ndarray, end_effector_position: np.ndarray, end_effector_name : str) -> np.ndarray:
+        """
+        Compute the forward kinematics for the robot model.
+        :param q: current joint configuration vector.
+        :param end_effector_position: Position of the end effector in the world frame [rotation matrix , translation vector].
+        :return: Joint configuration vector that achieves the desired end effector position.
+        """
+
+        joint_id = self.model.getFrameId(end_effector_name)  # Get the joint ID of the end effector
+
+        # Set parameters for the inverse kinematics solver
+        eps = 1e-4
+        IT_MAX = 1000
+        DT = 1e-1
+        damp = 1e-12
+
+        i = 0
+        while True:
+            pin.forwardKinematics(self.model, self.data, q)
+            iMd = self.data.oMi[joint_id].actInv(end_effector_position)
+            err = pin.log(iMd).vector  # in joint frame
+            if norm(err) < eps:
+                success = True
+                break
+            if i >= IT_MAX:
+                success = False
+                break
+            J = pin.computeJointJacobian(self.model, self.data, q, joint_id)  # in joint frame
+            J = -np.dot(pin.Jlog6(iMd.inverse()), J)
+            v = -J.T.dot(solve(J.dot(J.T) + damp * np.eye(6), err))
+            q = pin.integrate(self.model, q, v * DT)
+            if not i % 10:
+                print(f"{i}: error = {err.T}")
+            i += 1
+        
+        if success:
+            print("Convergence achieved!")
+            return q
+        else:
+            print(
+                "\n"
+                "Warning: the iterative algorithm has not reached convergence "
+                "to the desired precision"
+            )
+            return None  # Return None if convergence is not achieved
+        
+        
+    def compute_all_configurations(self, range : int, end_effector_name : str) -> np.ndarray:
+        """
+        Compute all configurations for the robot model within a specified range.
+        
+        :param range (int): Range as side of a square where in the center there is the actual position of end effector.
+        :param end_effector_name (str): Name of the end effector joint.
+        :return : Array of joint configurations that achieve the desired end effector position.
+        """
+        
+        if range <= 0:
+            raise ValueError("Range must be a positive value")
+        
+        # Get the current joint configuration
+        q = self.get_zero_configuration()
+
+        id_end_effector = self.model.getFrameId(end_effector_name)
+        # Get the current position of the end effector
+        end_effector_pos = self.data.oMi[id_end_effector].translation
+        
+        
+        # Create an array to store all configurations
+        configurations = []
+        
+        # Iterate over the range to compute all configurations
+        for x in np.arange(-range/2, range/2 + 1, 0.1):
+            for y in np.arange(-range/2, range/2 + 1, 0.1):
+                for z in np.arange(-range/2, range/2 + 1, 0.1):
+                    new_position = end_effector_pos.copy()
+                    new_position.translation += np.array([x, y, z])
+                    new_q = self.compute_inverse_kinematics(q, new_position, end_effector_name)
+                    if new_q is not None:
+                        configurations.append(new_q)
+        
+        return np.array(configurations)
+    
+
+    def verify_configurations(self, configurations : np.ndarray, ext_forces : np.ndarray) -> np.ndarray:
+        """
+        Verify the configurations to check if they are valid.
+        
+        :param configurations: Array of joint configurations to verify.
+        :param ext_forces: Array of external forces to apply to the robot model.
+        :return: Array of valid configurations.
+        """
+        
+        valid_configurations = []
+        
+        for q in configurations:
+            # Update the configuration of the robot model
+            self.update_configuration(q)
+            
+            # Compute the inverse dynamics for the current configuration
+            tau = self.compute_inverse_dynamics(q, self.get_zero_velocity(), self.get_zero_acceleration(),extForce=ext_forces)
+            
+            # Check if the torques are within the effort limits
+            if self.check_effort_limits(tau).all():
+                valid_configurations.append(q)
+                
+        return np.array(valid_configurations)
+        
 
     def compute_forward_dynamics_aba_method(self, q : np.ndarray, qdot : np.ndarray, tau : np.ndarray, extForce : np.ndarray[pin.Force] = None) -> np.ndarray:
         """
