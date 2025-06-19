@@ -25,7 +25,7 @@ from visualization_msgs.msg import Marker, MarkerArray
 from dynamic_payload_analysis_ros.menu_visual import MenuPayload
 
 
-#TODO : Add payload mass selection in the menu
+
 
 
 class RobotDescriptionSubscriber(Node):

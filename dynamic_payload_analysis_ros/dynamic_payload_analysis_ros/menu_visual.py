@@ -46,6 +46,7 @@ class MenuPayload():
         self.root_frames = self.menu_handler.insert('Select where to apply payload')
         # insert the reset payload button 
         self.reset = self.menu_handler.insert('Reset payloads', parent=self.root_frames, callback=self.callback_reset)
+        self.menu_handler.setCheckState(self.reset, MenuHandler.NO_CHECKBOX)
         
         self.make_menu_marker('menu_frames')
         # add server to menu and apply changes
@@ -84,7 +85,7 @@ class MenuPayload():
         # reset the frames selection menu (i = number of entry, item = object with name, sub entries, etc.)
         for i, item in self.menu_handler.entry_contexts_.items():
             if i == 1:
-                # skip the root item (payload reset)
+                # skip the root item
                 continue
             
             # check if the item(frame) has sub entries (payloads selection)
@@ -93,9 +94,11 @@ class MenuPayload():
                 for sub_item in item.sub_entries:
                     self.menu_handler.setVisible(sub_item, False)
                     self.menu_handler.setCheckState(sub_item, MenuHandler.UNCHECKED)
-                
-            # set the checked of frame to unchecked 
-            self.menu_handler.setCheckState(i,MenuHandler.UNCHECKED)
+            
+            # skip the reset payloads item
+            if item.title != 'Reset payloads':
+                # set the checked of frame to unchecked 
+                self.menu_handler.setCheckState(i,MenuHandler.UNCHECKED)
 
         # reapply the menu handler and server changes
         self.menu_handler.reApply(self.server)
