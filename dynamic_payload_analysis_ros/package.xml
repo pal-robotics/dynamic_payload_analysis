@@ -1,9 +1,9 @@
 <?xml version="1.0"?>
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
-  <name>dynamic_payload_analysis_core</name>
+  <name>dynamic_payload_analysis_ros</name>
   <version>0.0.0</version>
-  <description>Core package with calculation for torques calculator</description>
+  <description>This package provides tools for dynamic payload analysis in robotics with a focus on torque calculations and external force handling.</description>
   <maintainer email="enrimoro003@gmail.com">morolinux</maintainer>
   <license>Apache License 2.0</license>
 

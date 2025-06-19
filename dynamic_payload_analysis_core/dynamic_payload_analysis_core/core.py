@@ -1,4 +1,18 @@
-# Library to handle calculations for inverse and forward dynamics
+
+# Copyright (c) 2025 PAL Robotics S.L. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 
 import pinocchio as pin
 import numpy as np
@@ -47,17 +61,18 @@ class TorqueCalculator:
         return tau
     
 
-    def create_ext_force(self, mass : float, frame_name : str, q : np.ndarray) -> np.ndarray[pin.Force]:
+    def create_ext_force(self, masses : Union[float, np.ndarray] , frame_name : Union[str | np.ndarray], q : np.ndarray) -> np.ndarray[pin.Force]:
         """
         Create external forces vector based on the mass and frame ID.
         The resulting vector will contain the force applied to the specified frame and with the local orientation of the parent joint.
         
-        :param mass: Mass of the object to apply the force to.
-        :param frame_id: Frame ID where the force is applied.
+        :param masses (float, np.ndarray) : Mass of the object to apply the force to or vector with masses related to frames names.
+        :param frame_name(str , np.ndarray) : Frame name where the force is applied or vector of frame names where the forces is applied.
         :return: External force vector.
         """
-        if mass < 0:
-            raise ValueError("Mass must be a positive value")
+        if isinstance(masses, float):
+            if masses < 0:
+                raise ValueError("Mass must be a positive value")
         
         if frame_name is None:
             raise ValueError("Frame name must be provided")
@@ -70,23 +85,39 @@ class TorqueCalculator:
         # Initialize external forces array
         fext = [pin.Force(np.zeros(6)) for _ in range(self.model.njoints)]
         
-        self.update_configuration(q) 
+        self.update_configuration(q)
 
-        # Get the frame ID and joint ID from the frame name
-        frame_id = self.model.getFrameId(frame_name)
-        joint_id = self.model.frames[frame_id].parentJoint
+        # Check if frame_name is a single string or an array of strings
+        if isinstance(frame_name, str):
+             # Get the frame ID and joint ID from the frame name
+            frame_id = self.model.getFrameId(frame_name)
+            joint_id = self.model.frames[frame_id].parentJoint
 
-        # force expressed in the world frame (gravity force in z axis)
-        ext_force_world = pin.Force(np.array([0.0, 0.0, mass * -9.81]), np.array([0.0, 0.0, 0.0])) 
+            # force expressed in the world frame (gravity force in z axis)
+            ext_force_world = pin.Force(np.array([0.0, 0.0, masses * -9.81]), np.array([0.0, 0.0, 0.0])) 
 
-        # placement of the frame in the world frame
-        frame_placement = self.data.oMf[frame_id]
-        #print(f"Frame placement: {frame_placement}")
-        
-        # Convert the external force expressed in the world frame to the orientation of the joint frame where the force is applied
-        fext[joint_id] = self.data.oMi[joint_id].actInv(ext_force_world)
-        # Zero out the last 3 components (torques) of the force to ensure only the force in z axis (gravity force) is applied
-        fext[joint_id].angular = np.zeros(3) # TODO : make it more efficient 
+            # placement of the frame in the world frame
+            #frame_placement = self.data.oMf[frame_id]
+            #print(f"Frame placement: {frame_placement}")
+            
+            # Convert the external force expressed in the world frame to the orientation of the joint frame where the force is applied
+            fext[joint_id] = self.data.oMi[joint_id].actInv(ext_force_world)
+            # Zero out the last 3 components (torques) of the force to ensure only the force in z axis (gravity force) is applied
+            fext[joint_id].angular = np.zeros(3) # TODO : make it more efficient 
+
+        else:
+            for mass, frame in zip(masses,frame_name):
+                frame_id = self.model.getFrameId(frame)
+                joint_id = self.model.frames[frame_id].parentJoint
+
+                # force expressed in the world frame (gravity force in z axis)
+                ext_force_world = pin.Force(np.array([0.0, 0.0, mass * -9.81]), np.array([0.0, 0.0, 0.0]))
+                # Convert the external force expressed in the world frame to the orientation of the joint frame where the force is applied
+                fext[joint_id] = self.data.oMi[joint_id].actInv(ext_force_world)
+                # Zero out the last 3 components (torques) of the force to ensure only the force in z axis (gravity force) is applied
+                fext[joint_id].angular = np.zeros(3)
+
+       
         
         return fext
 
@@ -400,9 +431,26 @@ class TorqueCalculator:
         """
         
         self.update_configuration(q)
-        placements = np.array([({"name" : self.model.names[i], "x": self.data.oMi[i].translation[0], "y": self.data.oMi[i].translation[1], "z": self.data.oMi[i].translation[2]}) for i in range(1, self.model.njoints)], dtype=object)
+        placements = np.array([({"name" : self.model.names[i],"type" : self.model.joints[i].shortname() , "x": self.data.oMi[i].translation[0], "y": self.data.oMi[i].translation[1], "z": self.data.oMi[i].translation[2]}) for i in range(1, self.model.njoints)], dtype=object)
         
         return placements
+    
+
+    def get_joint_placement(self, joint_id : int) -> dict:
+        """
+        Get the placement of a specific joint in the robot model.
+        
+        :param joint_id: ID of the joint to get the placement for.
+        :return: Dictionary with coordinates x , y , z of the joint.
+        """
+        
+        if joint_id < 0 or joint_id >= self.model.njoints:
+            raise ValueError(f"Joint ID {joint_id} is out of bounds for the robot model with {self.model.njoints} joints.")
+        
+        placement = self.data.oMi[joint_id].translation
+        
+        return {"x" : placement[0], "y": placement[1], "z": placement[2]}
+        
 
 
     def print_torques(self, tau : np.ndarray):
@@ -413,13 +461,18 @@ class TorqueCalculator:
         """
         if tau is None:
             raise ValueError("Torques vector is None")
-        
+
         print("Torques vector:")
         for i, torque in enumerate(tau):
-            # TODO Extract type of joint in order to print right measure unit ([N] or [Nm])
-            print(f"Joint {i+2} {self.model.names[i+1]}: {torque:.4f} Nm")
-        
+            # check if the joint is a prismatic joint
+            if self.model.joints[i+1].shortname() == "JointModelPZ":
+                print(f"Joint {i+2} {self.model.names[i+1]}: {torque:.4f} N")
+                
+            # for revolute joints
+            else:
+                print(f"Joint {i+2} {self.model.names[i+1]}: {torque:.4f} Nm")
         print("\n")
+
 
 
     def print_frames(self):
