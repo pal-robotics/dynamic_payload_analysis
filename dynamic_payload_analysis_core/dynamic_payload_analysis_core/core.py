@@ -258,18 +258,22 @@ class TorqueCalculator:
         i = 0
         while True:
             pin.forwardKinematics(self.model, self.data, q)
-            iMd = self.data.oMi[joint_id].actInv(end_effector_position)
-            err = pin.log(iMd).vector  # in joint frame
+            iMd = self.data.oMi[joint_id].actInv(end_effector_position) # Get the transformation from the current end effector pose to the desired pose
+            err = pin.log(iMd).vector  # compute the error in the end effector position
             if norm(err) < eps:
                 success = True
                 break
             if i >= IT_MAX:
                 success = False
                 break
-            J = pin.computeJointJacobian(self.model, self.data, q, joint_id)  # in joint frame
-            J = -np.dot(pin.Jlog6(iMd.inverse()), J)
+
+            J = pin.computeJointJacobian(self.model, self.data, q, joint_id)  # compute the Jacobian of current pose of end effector
+            
+            # compute the inverse kinematics v = -J^T * (J * J^T + damp * I)^-1 * err
             v = -J.T.dot(solve(J.dot(J.T) + damp * np.eye(6), err))
+            # integrate the velocity to get the new joint configuration
             q = pin.integrate(self.model, q, v * DT)
+
             if not i % 10:
                 print(f"{i}: error = {err.T}")
             i += 1
@@ -285,7 +289,7 @@ class TorqueCalculator:
             )
             return None  # Return None if convergence is not achieved
         
-        
+            
     def compute_all_configurations(self, range : int, end_effector_name : str) -> np.ndarray:
         """
         Compute all configurations for the robot model within a specified range.
