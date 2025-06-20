@@ -26,6 +26,7 @@ from dynamic_payload_analysis_ros.menu_visual import MenuPayload
 
 
 
+
 class RobotDescriptionSubscriber(Node):
     def __init__(self):
         super().__init__('node_robot_description_subscriber')
@@ -44,6 +45,9 @@ class RobotDescriptionSubscriber(Node):
 
         # Publisher for RViz visualization of torques
         self.publisher_rviz_torque = self.create_publisher(MarkerArray, '/torque_visualization', 10)
+
+        # Pusblisher for point cloud workspace area
+        self.publisher_workspace_area = self.create_publisher(MarkerArray, '/workspace_area', 10)
 
         # subscription to joint states
         self.joint_states_subscription = self.create_subscription(JointState, '/joint_states', self.joint_states_callback, 10)
@@ -114,6 +118,10 @@ class RobotDescriptionSubscriber(Node):
             # publish the external force as arrows in RViz
             self.publish_payload_force(self.menu.get_item_state())
 
+            valid_configurations = self.robot.get_valid_workspace(1, "arm_left_7_link", self.external_force)
+            # publish the workspace area
+            #self.publish_workspace_area(valid_configurations)
+
 
     def publish_label_torques(self, torque: np.ndarray, status_torques : np.ndarray, joints_position: np.ndarray):
         """
@@ -162,7 +170,29 @@ class RobotDescriptionSubscriber(Node):
         self.publisher_rviz_torque.publish(marker_array)
 
 
+
+    def publish_workspace_area(self, valid_configs: np.ndarray ):
+        """
+        Publish the workspace area in RViz.
+
+        Args:
+            valid_configs (np.ndarray): Current valid configurations of the robot.
+        """
+        marker_points = MarkerArray()
+
+        for valid_config in valid_configs:
+
+            marker = Marker()
+            marker.header.frame_id = "base_link"
+            marker.header.stamp = self.get_clock().now().to_msg()
+            marker.ns = "workspace_area"
+            marker.id = 0
+            marker.type = Marker.POLYGON
+            marker.action = Marker.ADD
+            marker.scale.x = 0.01
     
+
+
     def publish_payload_force(self, frames_names : np.ndarray[str]):
         """
         Publish the gravity force on the frame with id `id_force`.

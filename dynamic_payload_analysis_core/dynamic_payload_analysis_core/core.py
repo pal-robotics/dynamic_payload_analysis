@@ -20,6 +20,10 @@ import math
 from typing import Union
 from pathlib import Path
 from numpy.linalg import norm, solve
+from optik import Robot, SolverConfig
+import tempfile
+from ikpy import chain
+import os
 
 class TorqueCalculator:
     def __init__(self, robot_description : Union[str, Path]):
@@ -33,10 +37,31 @@ class TorqueCalculator:
         # Load the robot model from path or XML string
         if isinstance(robot_description, str):
             self.model = pin.buildModelFromXML(robot_description)
+            # TODO change parser in general for more unique solution
+            # TODO understand how to parse the end effector name  
+            # create data for IK solver
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.urdf', delete=False) as temp_file:
+                    temp_file.write(robot_description)
+                    temp_urdf_path = temp_file.name
+
+            self.ik_model = chain.Chain.from_urdf_file(temp_urdf_path)
+        
+            os.unlink(temp_urdf_path)
+            #self.ik_model = Robot.from_urdf_file(temp_urdf_path, "base_link", "arm_left_tool_link")
+
+
         elif isinstance(robot_description, Path):
             self.model = pin.buildModelFromUrdf(str(robot_description.resolve()))
+            
+            # create data for IK solver
+            self.ik_model = Robot.from_urdf_file(str(robot_description.resolve()), "base_link", "arm_left_7_link")
+        
+        # create data for the robot model
+        self.ik_config = SolverConfig()
         
         self.data = self.model.createData()
+
+        
         
 
     def compute_inverse_dynamics(self, q : np.ndarray , qdot : np.ndarray, qddot : np.ndarray, extForce : np.ndarray[pin.Force] = None) -> np.ndarray:
@@ -123,6 +148,7 @@ class TorqueCalculator:
         return fext
 
 
+
     def update_configuration(self, q : np.ndarray):
         """
         Update the robot model configuration with the given joint configuration vector.
@@ -131,6 +157,7 @@ class TorqueCalculator:
         """
         pin.forwardKinematics(self.model, self.data, q)
         pin.updateFramePlacements(self.model, self.data)
+
 
 
     def get_mass_matrix(self, q : np.ndarray) -> np.ndarray:
@@ -147,6 +174,8 @@ class TorqueCalculator:
         
         return mass_matrix
     
+
+
     def get_joints(self) -> np.ndarray:
         """
         Get the array joint names of the robot model.
@@ -156,6 +185,8 @@ class TorqueCalculator:
         
         return np.array(self.model.names[1:], dtype=str)
     
+
+
     def get_frames(self) -> np.ndarray:
         """
         Get the array of frame names in the robot model.
@@ -165,6 +196,8 @@ class TorqueCalculator:
         
         return np.array([frame.name for frame in self.model.frames if frame.type == pin.FrameType.BODY], dtype=str)
     
+
+
     def get_active_frames(self) -> np.ndarray:
         """
         Get the array of active joint names in the robot model.
@@ -181,6 +214,8 @@ class TorqueCalculator:
         
         return np.array(frame_names, dtype=str)
     
+
+
     def get_parent_joint_id(self, frame_name : str) -> int:
         """
         Get the parent joint ID for a given frame name.
@@ -200,6 +235,8 @@ class TorqueCalculator:
             raise ValueError(f"Joint '{joint_id}' not found in the robot model")
         
         return joint_id
+
+
 
     def compute_maximum_payload(self, q : np.ndarray, qdot : np.ndarray, tau : np.ndarray, frame_name : str) -> float:
         """
@@ -238,6 +275,39 @@ class TorqueCalculator:
         
         return F_max[2] # get the force in z axis of the world frame, which is the maximum force payload
     
+
+
+    def compute_inverse_kinematics_optik(self, q : np.ndarray, end_effector_position: np.ndarray) -> np.ndarray:
+        """
+        Compute the inverse kinematics for the robot model using the Optik library.
+        
+        :param q: current joint configuration vector.
+        :param end_effector_position: Position of the end effector in the world frame [rotation matrix , translation vector].
+        :return: Joint configuration vector that achieves the desired end effector position.
+        """
+        
+        # Compute the inverse kinematics
+        sol = self.ik_model.ik(self.ik_config, end_effector_position, q)
+        
+        return sol
+    
+
+
+    def compute_inverse_kinematics_ikpy(self, q : np.ndarray, end_effector_position: np.ndarray) -> np.ndarray:
+        """
+        Compute the inverse kinematics for the robot model using the ikpy library.
+        
+        :param q: current joint configuration vector.
+        :param end_effector_position: Position of the end effector in the world frame [rotation matrix , translation vector].
+        :return: Joint configuration vector that achieves the desired end effector position.
+        """
+        
+        # Compute the inverse kinematics
+        sol = self.ik_model.inverse_kinematics(end_effector_position)
+        
+        return sol
+
+
 
     def compute_inverse_kinematics(self, q : np.ndarray, end_effector_position: np.ndarray, end_effector_name : str) -> np.ndarray:
         """
@@ -290,6 +360,7 @@ class TorqueCalculator:
             return None  # Return None if convergence is not achieved
         
             
+
     def compute_all_configurations(self, range : int, end_effector_name : str) -> np.ndarray:
         """
         Compute all configurations for the robot model within a specified range.
@@ -307,7 +378,7 @@ class TorqueCalculator:
 
         id_end_effector = self.model.getFrameId(end_effector_name)
         # Get the current position of the end effector
-        end_effector_pos = self.data.oMi[id_end_effector].translation
+        end_effector_pos = self.data.oMf[id_end_effector].translation
         
         
         # Create an array to store all configurations
@@ -318,13 +389,14 @@ class TorqueCalculator:
             for y in np.arange(-range/2, range/2 + 1, 0.1):
                 for z in np.arange(-range/2, range/2 + 1, 0.1):
                     new_position = end_effector_pos.copy()
-                    new_position.translation += np.array([x, y, z])
-                    new_q = self.compute_inverse_kinematics(q, new_position, end_effector_name)
+                    new_position += np.array([x, y, z])
+                    new_q = self.compute_inverse_kinematics_ikpy(q, new_position)
                     if new_q is not None:
                         configurations.append(new_q)
         
         return np.array(configurations)
     
+
 
     def verify_configurations(self, configurations : np.ndarray, ext_forces : np.ndarray) -> np.ndarray:
         """
@@ -332,7 +404,7 @@ class TorqueCalculator:
         
         :param configurations: Array of joint configurations to verify.
         :param ext_forces: Array of external forces to apply to the robot model.
-        :return: Array of valid configurations.
+        :return: Array of valid configurations with related torques.
         """
         
         valid_configurations = []
@@ -346,10 +418,30 @@ class TorqueCalculator:
             
             # Check if the torques are within the effort limits
             if self.check_effort_limits(tau).all():
-                valid_configurations.append(q)
+                valid_configurations.append((q, tau))
                 
         return np.array(valid_configurations)
         
+
+    def get_valid_workspace(self, range : int, end_effector_name : str, ext_forces : np.ndarray) -> np.ndarray:
+        """
+        Get the valid workspace of the robot model by computing all configurations within a specified range.
+        
+        :param range (int): Range as side of a square where in the center there is the actual position of end effector.
+        :param end_effector_name (str): Name of the end effector joint.
+        :param ext_forces: Array of external forces to apply to the robot model.
+        :return: Array of valid configurations that achieve the desired end effector position.
+        """
+        
+        # Compute all configurations within the specified range
+        configurations = self.compute_all_configurations(range, end_effector_name)
+        
+        # Verify the configurations to check if they are valid
+        valid_configurations = self.verify_configurations(configurations, ext_forces)
+        
+        return valid_configurations
+    
+
 
     def compute_forward_dynamics_aba_method(self, q : np.ndarray, qdot : np.ndarray, tau : np.ndarray, extForce : np.ndarray[pin.Force] = None) -> np.ndarray:
         """
