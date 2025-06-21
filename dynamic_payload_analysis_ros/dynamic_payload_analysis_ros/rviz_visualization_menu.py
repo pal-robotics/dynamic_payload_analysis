@@ -72,7 +72,7 @@ class RobotDescriptionSubscriber(Node):
         Timer to compute the valid workspace area.
         """
         if self.menu.get_workspace_state():
-            self.valid_configurations = self.robot.get_valid_workspace(3, 0.3, "gripper_left_finger_joint", self.external_force)
+            self.valid_configurations = self.robot.get_valid_workspace(4, 0.25, "gripper_left_finger_joint", self.external_force)
 
             # publish the workspace area
             self.publish_workspace_area(self.valid_configurations)
