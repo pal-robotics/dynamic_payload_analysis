@@ -25,6 +25,9 @@ import tempfile
 from ikpy import chain
 import os
 
+
+
+
 class TorqueCalculator:
     def __init__(self, robot_description : Union[str, Path]):
         """
@@ -37,17 +40,20 @@ class TorqueCalculator:
         # Load the robot model from path or XML string
         if isinstance(robot_description, str):
             self.model = pin.buildModelFromXML(robot_description)
+            
+            
             # TODO change parser in general for more unique solution
             # TODO understand how to parse the end effector name  
             # create data for IK solver
-            with tempfile.NamedTemporaryFile(mode='w', suffix='.urdf', delete=False) as temp_file:
-                    temp_file.write(robot_description)
-                    temp_urdf_path = temp_file.name
+            #with tempfile.NamedTemporaryFile(mode='w', suffix='.urdf', delete=False) as temp_file:
+            #        temp_file.write(robot_description)
+            #        temp_urdf_path = temp_file.name
 
-            self.ik_model = chain.Chain.from_urdf_file(temp_urdf_path)
-        
-            os.unlink(temp_urdf_path)
-            #self.ik_model = Robot.from_urdf_file(temp_urdf_path, "base_link", "arm_left_tool_link")
+            #self.geometry_model = pin.buildGeomFromUrdf(self.model,temp_urdf_path,pin.GeometryType.COLLISION, get_package_share_directory("tiago_pro_description"))
+            #self.ik_model = chain.Chain.from_urdf_file(temp_urdf_path)
+            #self.ik_model = Robot.from_urdf_file(temp_urdf_path, "base_link", "arm_left_7_link")
+            #os.unlink(temp_urdf_path)
+            
 
 
         elif isinstance(robot_description, Path):
@@ -70,7 +76,8 @@ class TorqueCalculator:
         
         :param q: Joint configuration vector.
         :param qdot: Joint velocity vector.
-        :param a: Joint acceleration vector.
+        :param qddot: Joint acceleration vector.
+        :param extForce: External forces vector applied to the robot model.
         :return: Torques vector
         """
 
@@ -311,24 +318,26 @@ class TorqueCalculator:
 
     def compute_inverse_kinematics(self, q : np.ndarray, end_effector_position: np.ndarray, end_effector_name : str) -> np.ndarray:
         """
-        Compute the forward kinematics for the robot model.
+        Compute the inverse kinematics for the robot model with joint limits consideration.
         :param q: current joint configuration vector.
         :param end_effector_position: Position of the end effector in the world frame [rotation matrix , translation vector].
+        :param end_effector_name: Name of the end effector joint.
         :return: Joint configuration vector that achieves the desired end effector position.
         """
 
         joint_id = self.model.getJointId(end_effector_name)  # Get the joint ID of the end effector
 
         # Set parameters for the inverse kinematics solver
-        eps = 1e-4
-        IT_MAX = 1000
+        eps = 1e-2
+        IT_MAX = 500
         DT = 1e-1
         damp = 1e-12
 
         i = 0
         while True:
-            pin.forwardKinematics(self.model, self.data, q)
+            self.update_configuration(q)
             iMd = self.data.oMi[joint_id].actInv(end_effector_position) # Get the transformation from the current end effector pose to the desired pose
+            
             err = pin.log(iMd).vector  # compute the error in the end effector position
             if norm(err) < eps:
                 success = True
@@ -338,14 +347,27 @@ class TorqueCalculator:
                 break
 
             J = pin.computeJointJacobian(self.model, self.data, q, joint_id)  # compute the Jacobian of current pose of end effector
-            
+            J = -np.dot(pin.Jlog6(iMd.inverse()), J)
+
             # compute the inverse kinematics v = -J^T * (J * J^T + damp * I)^-1 * err
             v = -J.T.dot(solve(J.dot(J.T) + damp * np.eye(6), err))
-            # integrate the velocity to get the new joint configuration
-            q = pin.integrate(self.model, q, v * DT)
+            
+            # Apply joint limits by clamping the resulting configuration
+            q_new = pin.integrate(self.model, q, v * DT)
+            # Ensure the new configuration is within joint limits
+            q_new = np.clip(q_new, self.model.lowerPositionLimit, self.model.upperPositionLimit)
+            
+            # Check if we're hitting joint limits and reduce step size if needed
+            if np.allclose(q_new, q, atol=1e-6):
+                DT *= 0.5  # Reduce step size if no progress due to joint limits
+                if DT < 1e-6:  # Minimum step size threshold
+                    success = False
+                    break
+            
+            q = q_new
 
-            if not i % 10:
-                print(f"{i}: error = {err.T}")
+            # if not i % 10:
+            #     print(f"{i}: error = {err.T}")
             i += 1
         
         if success:
@@ -361,11 +383,12 @@ class TorqueCalculator:
         
             
 
-    def compute_all_configurations(self, range : int, end_effector_name : str) -> np.ndarray:
+    def compute_all_configurations(self, range : int, resolution : int, end_effector_name : str) -> np.ndarray:
         """
         Compute all configurations for the robot model within a specified range.
         
         :param range (int): Range as side of a square where in the center there is the actual position of end effector.
+        :param resolution (int): Resolution of the grid to compute configurations.
         :param end_effector_name (str): Name of the end effector joint.
         :return : Array of joint configurations that achieve the desired end effector position.
         """
@@ -381,20 +404,23 @@ class TorqueCalculator:
         end_effector_pos = self.data.oMi[id_end_effector]
         
         
+        
         # Create an array to store all configurations
         configurations = []
         
         # Iterate over the range to compute all configurations
-        for x in np.arange(-range/2, range/2 + 1, 0.1):
-            for y in np.arange(-range/2, range/2 + 1, 0.1):
-                for z in np.arange(-range/2, range/2 + 1, 0.1):
-                    new_position = end_effector_pos.copy()
-                    new_position.translation += np.array([x, y, z])
-                    new_q = self.compute_inverse_kinematics(q, new_position, end_effector_name)
+        for x in np.arange(-range/2, range/2 , resolution):
+            for y in np.arange(-range/2, range/2 , resolution):
+                for z in np.arange(0, range , resolution):
+                    target_position = pin.SE3(np.eye(3), np.array([x, y, z]))
+                    new_q = self.compute_inverse_kinematics(q, target_position, end_effector_name)
+                     
                     if new_q is not None:
-                        configurations.append(new_q)
+                        q = new_q
+                        # store the valid configuration and the position of the end effector relative to that configuration
+                        configurations.append({"config" : new_q, "end_effector_pos": target_position.translation}) 
         
-        return np.array(configurations)
+        return np.array(configurations, dtype=object)
     
 
 
@@ -411,30 +437,39 @@ class TorqueCalculator:
         
         for q in configurations:
             # Update the configuration of the robot model
-            self.update_configuration(q)
+            self.update_configuration(q["config"])
             
+            # Check if the joint configuration is within the limits
+            #if not self.check_joint_limits(q["config"]).all():
+            #    print(f"Configuration {q['config']} is not within joint limits.")
+            #    continue
+
             # Compute the inverse dynamics for the current configuration
-            tau = self.compute_inverse_dynamics(q, self.get_zero_velocity(), self.get_zero_acceleration(),extForce=ext_forces)
+            tau = self.compute_inverse_dynamics(q["config"], self.get_zero_velocity(), self.get_zero_acceleration(),extForce=ext_forces)
+
+            # Compute all the collisions
+            #pin.computeCollisions(self.model, self.data, self.geom_model, self.geometry_model, q, False)
             
             # Check if the torques are within the effort limits
             if self.check_effort_limits(tau).all():
-                valid_configurations.append((q, tau))
+                valid_configurations.append({"config" : q["config"], "end_effector_pos" : q["end_effector_pos"], "tau" : tau })
                 
-        return np.array(valid_configurations)
+        return np.array(valid_configurations, dtype=object)
         
 
-    def get_valid_workspace(self, range : int, end_effector_name : str, ext_forces : np.ndarray) -> np.ndarray:
+    def get_valid_workspace(self, range : int, resolution : int, end_effector_name : str, ext_forces : np.ndarray) -> np.ndarray:
         """
         Get the valid workspace of the robot model by computing all configurations within a specified range.
         
         :param range (int): Range as side of a square where in the center there is the actual position of end effector.
-        :param end_effector_name (str): Name of the end effector link.
+        :param resolution (int): Resolution of the grid to compute configurations.
+        :param end_effector_name (str): Name of the end effector joint to test.
         :param ext_forces: Array of external forces to apply to the robot model.
         :return: Array of valid configurations that achieve the desired end effector position.
         """
         
         # Compute all configurations within the specified range
-        configurations = self.compute_all_configurations(range, end_effector_name)
+        configurations = self.compute_all_configurations(range,resolution, end_effector_name)
         
         # Verify the configurations to check if they are valid
         valid_configurations = self.verify_configurations(configurations, ext_forces)
@@ -484,6 +519,25 @@ class TorqueCalculator:
             raise ValueError("Failed to compute Jacobian")
         
         return J_frame
+    
+
+    def get_normalized_unified_torque(self, tau : np.ndarray) -> np.ndarray:
+        """
+        Normalize the torques vector to a unified scale.
+        
+        :param tau: Torques vector to normalize.
+        :return: Normalized torques vector.
+        """
+        # TODO Check only the torques related to one arm and not all the robot
+        if tau is None:
+            raise ValueError("Torques vector is None")
+        
+        sum = 0
+        # Normalize the torques vector
+        for i, torque in enumerate(tau):
+            sum += abs(torque) / self.model.effortLimit[i]
+        
+        return sum / (i+1)
     
 
     def check_zero(self, vec : np.ndarray) -> bool:
@@ -556,6 +610,29 @@ class TorqueCalculator:
             raise ValueError("Failed to get random velocity")
          
         return q, qdot
+    
+
+    def check_joint_limits(self, q : np.ndarray) -> np.ndarray:
+        """
+        Check if the joint configuration vector is within the joint limits of the robot model.
+        
+        :param q: Joint configuration vector to check.
+        :return: Array of booleans indicating if each joint is within the limits.
+        """
+        if q is None:
+            raise ValueError("Joint configuration vector is None")
+        
+        # array to store if the joint is within the limits
+        within_limits = np.zeros(self.model.njoints - 1, dtype=bool)
+
+        # Check if the joint configuration is within the limits
+        for i in range(self.model.njoints - 1): 
+            if q[i] < self.model.lowerPositionLimit[i] or q[i] > self.model.upperPositionLimit[i]:
+                within_limits[i] = False
+            else:
+                within_limits[i] = True
+        
+        return within_limits
 
 
     def check_effort_limits(self, tau : np.ndarray) -> np.ndarray:
