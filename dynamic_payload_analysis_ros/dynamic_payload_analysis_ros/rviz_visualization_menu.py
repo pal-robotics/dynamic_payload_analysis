@@ -16,7 +16,7 @@
 
 import rclpy
 from rclpy.node import Node
-from std_msgs.msg import String
+from std_msgs.msg import String, ColorRGBA
 from geometry_msgs.msg import WrenchStamped, Point
 from sensor_msgs.msg import JointState
 from dynamic_payload_analysis_core.core import TorqueCalculator
@@ -72,7 +72,7 @@ class RobotDescriptionSubscriber(Node):
         Timer to compute the valid workspace area.
         """
         if self.menu.get_workspace_state():
-            self.valid_configurations = self.robot.get_valid_workspace(4, 0.25, "gripper_left_finger_joint", self.external_force)
+            self.valid_configurations = self.robot.get_valid_workspace(3, 0.25, "gripper_left_finger_joint", self.external_force)
 
             # publish the workspace area
             self.publish_workspace_area(self.valid_configurations)
@@ -204,12 +204,8 @@ class RobotDescriptionSubscriber(Node):
         marker_points.scale.x = 0.03  # Size of the spheres
         marker_points.scale.y = 0.03
         marker_points.scale.z = 0.03
-        marker_points.color.a = 1.0  # Alpha
-        marker_points.color.r = 0.0  # Red
-        marker_points.color.g = 1.0  # Green
-        marker_points.color.b = 0.0  # Blue
         
-        #TODO : Add colors based on torques
+        
         points_array = []
         points_colors = []
 
@@ -221,10 +217,21 @@ class RobotDescriptionSubscriber(Node):
             point.x = valid_config["end_effector_pos"][0]
             point.y = valid_config["end_effector_pos"][1]
             point.z = valid_config["end_effector_pos"][2]
+
+            # Add color based on the torque
+            color = ColorRGBA()
+            normalized_torque = self.robot.get_normalized_unified_torque(valid_config["tau"])
+
+            color.r = normalized_torque  # More red as torque approaches 1
+            color.g = 1.0 - normalized_torque  # More green as torque approaches 0
+            color.b = 0.0  # No blue component
+            color.a = 1.0  # Alpha
             
+            points_colors.append(color)
             points_array.append(point)
 
         marker_points.points = points_array
+        marker_points.colors = points_colors
 
         # Publish the marker array
         self.publisher_workspace_area.publish(marker_points)
