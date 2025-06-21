@@ -17,7 +17,7 @@
 import rclpy
 from rclpy.node import Node
 from std_msgs.msg import String
-from geometry_msgs.msg import WrenchStamped
+from geometry_msgs.msg import WrenchStamped, Point
 from sensor_msgs.msg import JointState
 from dynamic_payload_analysis_core.core import TorqueCalculator
 import numpy as np
@@ -47,17 +47,21 @@ class RobotDescriptionSubscriber(Node):
         self.publisher_rviz_torque = self.create_publisher(MarkerArray, '/torque_visualization', 10)
 
         # Pusblisher for point cloud workspace area
-        self.publisher_workspace_area = self.create_publisher(MarkerArray, '/workspace_area', 10)
+        self.publisher_workspace_area = self.create_publisher(Marker, '/workspace_area', 10)
 
         # subscription to joint states
         self.joint_states_subscription = self.create_subscription(JointState, '/joint_states', self.joint_states_callback, 10)
         
         self.robot = None
 
+        self.first = True
+
         # frame where the external force is applied
         self.frame_id = None
 
         self.external_force = None
+
+        self.valid_configurations = None
 
         self.get_logger().info('Robot description subscriber node started')
 
@@ -118,9 +122,12 @@ class RobotDescriptionSubscriber(Node):
             # publish the external force as arrows in RViz
             self.publish_payload_force(self.menu.get_item_state())
 
-            valid_configurations = self.robot.get_valid_workspace(1, "arm_left_7_link", self.external_force)
-            # publish the workspace area
-            #self.publish_workspace_area(valid_configurations)
+            if self.first:
+                self.valid_configurations = self.robot.get_valid_workspace(5, 0.3, "arm_left_7_joint", self.external_force)
+                self.first = False
+                # publish the workspace area
+            
+                self.publish_workspace_area(self.valid_configurations)
 
 
     def publish_label_torques(self, torque: np.ndarray, status_torques : np.ndarray, joints_position: np.ndarray):
@@ -178,18 +185,41 @@ class RobotDescriptionSubscriber(Node):
         Args:
             valid_configs (np.ndarray): Current valid configurations of the robot.
         """
-        marker_points = MarkerArray()
+        marker_points = Marker()
+        marker_points.header.frame_id = "base_link"
+        marker_points.header.stamp = self.get_clock().now().to_msg()
+        marker_points.ns = "workspace_area"
+        marker_points.id = 0
+        marker_points.type = Marker.SPHERE_LIST
+        marker_points.action = Marker.ADD
+        marker_points.scale.x = 0.03  # Size of the spheres
+        marker_points.scale.y = 0.03
+        marker_points.scale.z = 0.03
+        marker_points.color.a = 1.0  # Alpha
+        marker_points.color.r = 0.0  # Red
+        marker_points.color.g = 1.0  # Green
+        marker_points.color.b = 0.0  # Blue
+        
+        #TODO : Add colors based on torques
+        points_array = []
+        points_colors = []
 
-        for valid_config in valid_configs:
+        # Iterate through the valid configurations and create markers
+        for i, valid_config in enumerate(valid_configs):
 
-            marker = Marker()
-            marker.header.frame_id = "base_link"
-            marker.header.stamp = self.get_clock().now().to_msg()
-            marker.ns = "workspace_area"
-            marker.id = 0
-            marker.type = Marker.POLYGON
-            marker.action = Marker.ADD
-            marker.scale.x = 0.01
+            point = Point()
+
+            point.x = valid_config["end_effector_pos"][0]
+            point.y = valid_config["end_effector_pos"][1]
+            point.z = valid_config["end_effector_pos"][2]
+            
+            points_array.append(point)
+
+        marker_points.points = points_array
+
+        # Publish the marker array
+        self.publisher_workspace_area.publish(marker_points)
+
     
 
 

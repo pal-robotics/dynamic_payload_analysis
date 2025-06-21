@@ -317,7 +317,7 @@ class TorqueCalculator:
         :return: Joint configuration vector that achieves the desired end effector position.
         """
 
-        joint_id = self.model.getFrameId(end_effector_name)  # Get the joint ID of the end effector
+        joint_id = self.model.getJointId(end_effector_name)  # Get the joint ID of the end effector
 
         # Set parameters for the inverse kinematics solver
         eps = 1e-4
@@ -376,9 +376,9 @@ class TorqueCalculator:
         # Get the current joint configuration
         q = self.get_zero_configuration()
 
-        id_end_effector = self.model.getFrameId(end_effector_name)
+        id_end_effector = self.model.getJointId(end_effector_name)
         # Get the current position of the end effector
-        end_effector_pos = self.data.oMf[id_end_effector].translation
+        end_effector_pos = self.data.oMi[id_end_effector]
         
         
         # Create an array to store all configurations
@@ -389,8 +389,8 @@ class TorqueCalculator:
             for y in np.arange(-range/2, range/2 + 1, 0.1):
                 for z in np.arange(-range/2, range/2 + 1, 0.1):
                     new_position = end_effector_pos.copy()
-                    new_position += np.array([x, y, z])
-                    new_q = self.compute_inverse_kinematics_ikpy(q, new_position)
+                    new_position.translation += np.array([x, y, z])
+                    new_q = self.compute_inverse_kinematics(q, new_position, end_effector_name)
                     if new_q is not None:
                         configurations.append(new_q)
         
@@ -428,7 +428,7 @@ class TorqueCalculator:
         Get the valid workspace of the robot model by computing all configurations within a specified range.
         
         :param range (int): Range as side of a square where in the center there is the actual position of end effector.
-        :param end_effector_name (str): Name of the end effector joint.
+        :param end_effector_name (str): Name of the end effector link.
         :param ext_forces: Array of external forces to apply to the robot model.
         :return: Array of valid configurations that achieve the desired end effector position.
         """
