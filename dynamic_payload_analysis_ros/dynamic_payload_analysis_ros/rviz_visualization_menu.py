@@ -54,8 +54,6 @@ class RobotDescriptionSubscriber(Node):
         
         self.robot = None
 
-        self.first = True
-
         # frame where the external force is applied
         self.frame_id = None
 
@@ -63,7 +61,23 @@ class RobotDescriptionSubscriber(Node):
 
         self.valid_configurations = None
 
+        # timer to compute the valid workspace area
+        self.timer_workspace_calculation = self.create_timer(3, self.worspace_calculation)
+
         self.get_logger().info('Robot description subscriber node started')
+
+
+    def worspace_calculation(self):
+        """
+        Timer to compute the valid workspace area.
+        """
+        if self.menu.get_workspace_state():
+            self.valid_configurations = self.robot.get_valid_workspace(3, 0.3, "gripper_left_finger_joint", self.external_force)
+
+            # publish the workspace area
+            self.publish_workspace_area(self.valid_configurations)
+            # set the workspace state to False to stop the computation
+            self.menu.set_workspace_state(False)
 
 
     def robot_description_callback(self, msg):
@@ -122,12 +136,7 @@ class RobotDescriptionSubscriber(Node):
             # publish the external force as arrows in RViz
             self.publish_payload_force(self.menu.get_item_state())
 
-            if self.first:
-                self.valid_configurations = self.robot.get_valid_workspace(5, 0.3, "arm_left_7_joint", self.external_force)
-                self.first = False
-                # publish the workspace area
             
-                self.publish_workspace_area(self.valid_configurations)
 
 
     def publish_label_torques(self, torque: np.ndarray, status_torques : np.ndarray, joints_position: np.ndarray):

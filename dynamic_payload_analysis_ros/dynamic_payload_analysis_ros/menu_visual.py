@@ -44,6 +44,7 @@ class MenuPayload():
 
         # insert the root menu items
         self.root_frames = self.menu_handler.insert('Select where to apply payload')
+        self.workspace_button = self.menu_handler.insert('Compute workspace', callback=self.callback_workspace)
         # insert the reset payload button 
         self.reset = self.menu_handler.insert('Reset payloads', parent=self.root_frames, callback=self.callback_reset)
         
@@ -63,13 +64,28 @@ class MenuPayload():
         self.menu_handler.setCheckState(last_item, MenuHandler.UNCHECKED)
         self.menu_handler.setVisible(last_item, True)
         
+        # flag to compute workspace
+        self.compute_workspace = False
+        
         # add the item to the checked frames array in order to keep track of the checked items
         self.frames_selection = np.append(self.frames_selection, {"name": name, "checked" : False, "payload" : 0.0} )
 
         # apply changes
         self.menu_handler.reApply(self.server)
         self.server.applyChanges()
+    
+
+    def callback_workspace(self, feedback):
+        """
+        Callback to compute the workspace based on the selected frames and payloads.
+        This function is called when the user clicks on the "Compute workspace" button.
+        """
+        self.compute_workspace = True
         
+        
+        
+
+
 
     def callback_reset(self, feedback):
         """
@@ -213,6 +229,26 @@ class MenuPayload():
         # apply changes
         self.menu_handler.reApply(self.server)
         self.server.applyChanges()
+
+
+    def get_workspace_state(self) -> bool:
+        """
+        Return the state of the workspace computation flag.
+        
+        Returns:
+            bool: True if the workspace should be computed, False otherwise.
+        """
+        return self.compute_workspace
+    
+
+    def set_workspace_state(self, state: bool):
+        """
+        Set the state of the workspace computation flag.
+        
+        Args:
+            state (bool): True to compute workspace, False otherwise.
+        """
+        self.compute_workspace = state
 
 
     def get_item_state(self) -> np.ndarray:
