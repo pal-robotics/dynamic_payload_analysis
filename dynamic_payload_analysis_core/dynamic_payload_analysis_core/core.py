@@ -41,18 +41,17 @@ class TorqueCalculator:
         if isinstance(robot_description, str):
             self.model = pin.buildModelFromXML(robot_description)
             
-            
             # TODO change parser in general for more unique solution
-            # TODO understand how to parse the end effector name  
-            # create data for IK solver
-            #with tempfile.NamedTemporaryFile(mode='w', suffix='.urdf', delete=False) as temp_file:
-            #        temp_file.write(robot_description)
-            #        temp_urdf_path = temp_file.name
+            
+            # create temporary URDF file from the robot description string
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.urdf', delete=False) as temp_file:
+                    temp_file.write(robot_description)
+                    temp_urdf_path = temp_file.name
 
-            #self.geometry_model = pin.buildGeomFromUrdf(self.model,temp_urdf_path,pin.GeometryType.COLLISION, get_package_share_directory("tiago_pro_description"))
+            self.geom_model = pin.buildGeomFromUrdf(self.model,temp_urdf_path,pin.GeometryType.COLLISION)
             #self.ik_model = chain.Chain.from_urdf_file(temp_urdf_path)
             #self.ik_model = Robot.from_urdf_file(temp_urdf_path, "base_link", "arm_left_7_link")
-            #os.unlink(temp_urdf_path)
+            os.unlink(temp_urdf_path)
             
 
 
@@ -66,6 +65,7 @@ class TorqueCalculator:
         self.ik_config = SolverConfig()
         
         self.data = self.model.createData()
+        self.geom_data = pin.GeometryData(self.geom_model)
 
         
         
@@ -328,9 +328,9 @@ class TorqueCalculator:
         joint_id = self.model.getJointId(end_effector_name)  # Get the joint ID of the end effector
 
         # Set parameters for the inverse kinematics solver
-        eps = 1e-2
-        IT_MAX = 500
-        DT = 1e-1
+        eps = 1e-1 # reduce for more precision
+        IT_MAX = 300 # Maximum number of iterations
+        DT = 1e-1 
         damp = 1e-12
 
         i = 0
@@ -371,7 +371,7 @@ class TorqueCalculator:
             i += 1
         
         if success:
-            print("Convergence achieved!")
+            print(f"Convergence achieved! in {i} iterations")
             return q
         else:
             print(
@@ -439,16 +439,24 @@ class TorqueCalculator:
             # Update the configuration of the robot model
             self.update_configuration(q["config"])
             
-            # Check if the joint configuration is within the limits
-            #if not self.check_joint_limits(q["config"]).all():
-            #    print(f"Configuration {q['config']} is not within joint limits.")
-            #    continue
-
             # Compute the inverse dynamics for the current configuration
             tau = self.compute_inverse_dynamics(q["config"], self.get_zero_velocity(), self.get_zero_acceleration(),extForce=ext_forces)
 
             # Compute all the collisions
-            #pin.computeCollisions(self.model, self.data, self.geom_model, self.geometry_model, q, False)
+            pin.computeCollisions(self.model, self.data, self.geom_model, self.geom_data, q["config"], False)
+
+            # Print the status of collision for all collision pairs
+            for k in range(len(self.geom_model.collisionPairs)):
+                cr = self.geom_data.collisionResults[k]
+                cp = self.geom_model.collisionPairs[k]
+                print(
+                    "collision pair:",
+                    cp.first,
+                    ",",
+                    cp.second,
+                    "- collision:",
+                    "Yes" if cr.isCollision() else "No",
+                )
             
             # Check if the torques are within the effort limits
             if self.check_effort_limits(tau).all():
@@ -521,11 +529,12 @@ class TorqueCalculator:
         return J_frame
     
 
-    def get_normalized_unified_torque(self, tau : np.ndarray) -> np.ndarray:
+    def get_normalized_unified_torque(self, tau : np.ndarray, arm : str) -> np.ndarray:
         """
         Normalize the torques vector to a unified scale.
         
         :param tau: Torques vector to normalize.
+        :param arm: Arm name to filter the torques vector.
         :return: Normalized torques vector.
         """
         # TODO Check only the torques related to one arm and not all the robot
@@ -533,11 +542,17 @@ class TorqueCalculator:
             raise ValueError("Torques vector is None")
         
         sum = 0
+        n_joints = 0
+
         # Normalize the torques vector
-        for i, torque in enumerate(tau):
-            sum += abs(torque) / self.model.effortLimit[i]
+        # TODO : Find a better way to normalize the torques vector 
+        for i, torque in enumerate(tau, start=1):
+            # sum only the torques related to the selected arm (not considering the torso joint torque because is common to all the configurations)
+            if arm in self.model.names[i] and "wheel" not in self.model.names[i] and "gripper" not in self.model.names[i]:
+                sum += abs(torque) / self.model.effortLimit[i-1]
+                n_joints += 1
         
-        return sum / (i+1)
+        return sum / n_joints
     
 
     def check_zero(self, vec : np.ndarray) -> bool:
