@@ -39,6 +39,12 @@ class MenuPayload():
         #current managed frame
         self.current_frame = None
 
+        # flag to compute workspace
+        self.compute_workspace = False
+
+        # variable to store the selected configuration to display in Rviz
+        self.selected_configuration = None
+
         # payload mass selection array
         self.payload_selection = np.array([0.1, 0.2, 0.3, 0.4, 0.5, 1, 1.5, 1.8, 2.0, 2.5, 3.0, 3.5], dtype=float)
 
@@ -64,9 +70,6 @@ class MenuPayload():
         self.menu_handler.setCheckState(last_item, MenuHandler.UNCHECKED)
         self.menu_handler.setVisible(last_item, True)
         
-        # flag to compute workspace
-        self.compute_workspace = False
-        
         # add the item to the checked frames array in order to keep track of the checked items
         self.frames_selection = np.append(self.frames_selection, {"name": name, "checked" : False, "payload" : 0.0} )
 
@@ -83,8 +86,66 @@ class MenuPayload():
         self.compute_workspace = True
         
         
-        
+    def insert_dropdown_configuration(self, configuration : np.ndarray):
+        """
+        Insert to the dropdown the possible configurations.
 
+        Args:
+            configuration (np.ndarray): Array of configuration to be displayed in the dropdown.
+        """
+
+        for i, item in enumerate(configuration):
+            # insert the parent in the command field to keep track of the parent id
+            last_entry = self.menu_handler.insert(f"Configuration {i}", parent=self.workspace_button, command=str(self.workspace_button), callback=self.callback_configuration_selection)
+            self.menu_handler.setCheckState(last_entry, MenuHandler.UNCHECKED)
+            self.menu_handler.setVisible(last_entry, True)
+
+        self.menu_handler.reApply(self.server)
+        self.server.applyChanges()
+
+
+    def callback_configuration_selection(self, feedback):
+        """
+        Callback for configuration selection to change the check state of the selected item.
+        
+        Args:
+            feedback: Feedback from the menu selection.
+        """
+        # get the handle of the selected item (id)
+        handle = feedback.menu_entry_id
+        # get the title of the selected item (it contains configuration number)
+        title = self.menu_handler.getTitle(handle)
+
+        # set the checkbox as checked
+        self.menu_handler.setCheckState(handle, MenuHandler.CHECKED)
+
+         # get the entry object from the menu handler with all the informations about the item (command field is used to store the parent id)
+        config_context = self.menu_handler.entry_contexts_[handle]
+
+        # get the parent id of the selected payload stored in the command field
+        parent_id = int(config_context.command)
+        # get the entry object of the parent
+        parent_context = self.menu_handler.entry_contexts_[parent_id]
+        # get the name of the parent item (frame name)
+        name_parent = self.menu_handler.getTitle(parent_id)
+        
+        # reset all the selections in the payload sub-menu
+        # check if a item is already checked, if so remove it and set to unchecked to prevent multiple payload selection in the same menu
+        for item in parent_context.sub_entries:
+            # check if the item is checked
+            if self.menu_handler.getCheckState(item) == MenuHandler.CHECKED:
+                # if the configuration is already checked, we need to uncheck it
+                self.menu_handler.setCheckState(item, MenuHandler.UNCHECKED)
+        
+        # set the selected configuration checkbox as checked
+        self.menu_handler.setCheckState(handle, MenuHandler.CHECKED)
+        # update the selected configuration
+        self.selected_configuration = int(title.split()[1])  # Extract the configuration number from the title
+                
+        
+        # apply changes
+        self.menu_handler.reApply(self.server)
+        self.server.applyChanges()
 
 
     def callback_reset(self, feedback):
@@ -230,6 +291,15 @@ class MenuPayload():
         self.menu_handler.reApply(self.server)
         self.server.applyChanges()
 
+
+    def get_selected_configuration(self) -> str:
+        """
+        Return the selected configuration to display in Rviz.
+        
+        Returns:
+            str: The selected configuration number.
+        """
+        return self.selected_configuration
 
     def get_workspace_state(self) -> bool:
         """
