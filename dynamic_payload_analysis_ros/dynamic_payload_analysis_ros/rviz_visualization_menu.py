@@ -51,6 +51,9 @@ class RobotDescriptionSubscriber(Node):
 
         # subscription to joint states
         self.joint_states_subscription = self.create_subscription(JointState, '/joint_states', self.joint_states_callback, 10)
+
+        # publisher for the joint states
+        self.publisher_joint_states = self.create_publisher(JointState, '/joint_states', 10)
         
         self.robot = None
 
@@ -63,6 +66,8 @@ class RobotDescriptionSubscriber(Node):
 
         # timer to compute the valid workspace area
         self.timer_workspace_calculation = self.create_timer(3, self.worspace_calculation)
+        # timer to publish the selected configuration
+        self.timer_publish_configuration = self.create_timer(2, self.publish_selected_configuration)
 
         self.get_logger().info('Robot description subscriber node started')
 
@@ -72,13 +77,33 @@ class RobotDescriptionSubscriber(Node):
         Timer to compute the valid workspace area.
         """
         if self.menu.get_workspace_state():
-            self.valid_configurations = self.robot.get_valid_workspace(3, 0.25, "gripper_left_finger_joint", self.external_force)
+            self.valid_configurations = self.robot.get_valid_workspace(2, 0.3, "gripper_left_finger_joint", self.external_force)
 
             # publish the workspace area
             self.publish_workspace_area(self.valid_configurations)
             # set the workspace state to False to stop the computation
+            self.menu.insert_dropdown_configuration(self.valid_configurations)
+            
+            # reset the workspace state to False to stop the computation
             self.menu.set_workspace_state(False)
 
+
+
+    def publish_selected_configuration(self):
+        
+        current_configurations = self.menu.get_selected_configuration()
+        
+        if current_configurations is not None:
+            configs = self.robot.get_position_for_joint_states(self.valid_configurations, current_configurations)
+            joint_state = JointState()
+            joint_state.header.stamp = self.get_clock().now().to_msg()
+            
+            joint_state.name = configs["joint_name"]
+            joint_state.position = configs["q"]
+            #joint_state.position =
+            self.publisher_joint_states.publish(joint_state)
+
+        
 
     def robot_description_callback(self, msg):
         self.get_logger().info('Received robot description')
@@ -100,9 +125,9 @@ class RobotDescriptionSubscriber(Node):
             name_position = list(msg.name)
             v = msg.velocity if msg.velocity else self.robot.get_zero_velocity()
             
+            # set the positions based on the joint states
             q = self.robot.set_position(positions, name_position)
             a = self.robot.get_zero_acceleration()
-
                     
             # create the array with only the checked frames (with external force applied)
             self.checked_frames = np.array([check_frame["name"] for check_frame in self.menu.get_item_state() if check_frame['checked']])
@@ -127,7 +152,7 @@ class RobotDescriptionSubscriber(Node):
             # get the active frames
             frames = self.robot.get_active_frames()
 
-            # get the positions of the joints where the torques are applied
+            # get the positions of the joints where the torques are applied based on 
             joints_position = self.robot.get_joints_placements(q)
 
             # Publish the torques in RViz
@@ -136,7 +161,6 @@ class RobotDescriptionSubscriber(Node):
             # publish the external force as arrows in RViz
             self.publish_payload_force(self.menu.get_item_state())
 
-            
 
 
     def publish_label_torques(self, torque: np.ndarray, status_torques : np.ndarray, joints_position: np.ndarray):
@@ -220,7 +244,7 @@ class RobotDescriptionSubscriber(Node):
 
             # Add color based on the torque
             color = ColorRGBA()
-            normalized_torque = self.robot.get_normalized_unified_torque(valid_config["tau"])
+            normalized_torque = self.robot.get_normalized_unified_torque(valid_config["tau"], "left")
 
             color.r = normalized_torque  # More red as torque approaches 1
             color.g = 1.0 - normalized_torque  # More green as torque approaches 0
