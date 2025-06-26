@@ -49,6 +49,9 @@ class RobotDescriptionSubscriber(Node):
         # Pusblisher for point cloud workspace area
         self.publisher_workspace_area = self.create_publisher(Marker, '/workspace_area', 10)
 
+        # Publisher for point names in the workspace area
+        self.publisher_workspace_area_names = self.create_publisher(MarkerArray, '/workspace_area_names', 10)
+
         # subscription to joint states
         self.joint_states_subscription = self.create_subscription(JointState, '/joint_states', self.joint_states_callback, 10)
 
@@ -65,14 +68,14 @@ class RobotDescriptionSubscriber(Node):
         self.valid_configurations = None
 
         # timer to compute the valid workspace area
-        self.timer_workspace_calculation = self.create_timer(3, self.worspace_calculation)
+        self.timer_workspace_calculation = self.create_timer(3, self.workspace_calculation)
         # timer to publish the selected configuration
         self.timer_publish_configuration = self.create_timer(2, self.publish_selected_configuration)
 
         self.get_logger().info('Robot description subscriber node started')
 
 
-    def worspace_calculation(self):
+    def workspace_calculation(self):
         """
         Timer to compute the valid workspace area.
         """
@@ -90,7 +93,10 @@ class RobotDescriptionSubscriber(Node):
 
 
     def publish_selected_configuration(self):
-        
+        """
+        Timer to publish the selected configuration.
+        This will publish the joint states of the selected configuration in the menu.
+        """
         selected_configuration = self.menu.get_selected_configuration()
         
         if selected_configuration is not None:
@@ -208,16 +214,21 @@ class RobotDescriptionSubscriber(Node):
                 marker_array.markers.append(marker)
         
         self.publisher_rviz_torque.publish(marker_array)
+        
 
 
 
     def publish_workspace_area(self, valid_configs: np.ndarray ):
         """
-        Publish the workspace area in RViz.
+        Publish the workspace area in RViz using points.
 
         Args:
             valid_configs (np.ndarray): Current valid configurations of the robot.
         """
+        # Create a MarkerArray to visualize the number of configuration of a specific point in the workspace
+        marker_point_names = MarkerArray()
+
+        # Create a Marker for the workspace area using points
         marker_points = Marker()
         marker_points.header.frame_id = "base_link"
         marker_points.header.stamp = self.get_clock().now().to_msg()
@@ -235,7 +246,29 @@ class RobotDescriptionSubscriber(Node):
 
         # Iterate through the valid configurations and create markers
         for i, valid_config in enumerate(valid_configs):
+            
+            # create the label for the point
+            marker_point_name = Marker()
+            marker_point_name.header.frame_id = "base_link"
+            marker_point_name.header.stamp = self.get_clock().now().to_msg()
+            marker_point_name.ns = "workspace_area"
+            marker_point_name.id = i + 1 
+            marker_point_name.type = Marker.TEXT_VIEW_FACING
+            marker_point_name.text = f"Config {i}"
+            marker_point_name.action = Marker.ADD
+            marker_point_name.pose.position.x = valid_config["end_effector_pos"][0]
+            marker_point_name.pose.position.y = valid_config["end_effector_pos"][1]
+            marker_point_name.pose.position.z = valid_config["end_effector_pos"][2] + 0.05  # Offset to avoid overlap with the sphere
+            marker_point_name.pose.orientation.w = 1.0
+            marker_point_name.scale.x = 0.02
+            marker_point_name.scale.y = 0.02
+            marker_point_name.scale.z = 0.02
+            marker_point_name.color.a = 1.0  # Alpha
+            marker_point_name.color.r = 1.0  # Red
+            marker_point_name.color.g = 1.0  # Green
+            marker_point_name.color.b = 1.0  # Blue
 
+            # create the point to visualize the possible end effector position
             point = Point()
 
             point.x = valid_config["end_effector_pos"][0]
@@ -254,11 +287,15 @@ class RobotDescriptionSubscriber(Node):
             points_colors.append(color)
             points_array.append(point)
 
+            # Add the marker for the point
+            marker_point_names.markers.append(marker_point_name)
+
         marker_points.points = points_array
         marker_points.colors = points_colors
 
-        # Publish the marker array
+        # Publish the marker points and names
         self.publisher_workspace_area.publish(marker_points)
+        self.publisher_workspace_area_names.publish(marker_point_names)
 
     
 
