@@ -65,14 +65,68 @@ class RobotDescriptionSubscriber(Node):
 
         self.external_force = None
 
+        # variable to store the currente selected configuration from the workspace menu
         self.valid_configurations = None
 
-        # timer to compute the valid workspace area
+        # variable to store if there is a selected configuration from the workspace menu to visualize
+        self.selected_configuration = None
+
+        # timer to compute the valid workspace area 
         self.timer_workspace_calculation = self.create_timer(3, self.workspace_calculation)
-        # timer to publish the selected configuration
+        # timer to publish the selected configuration in joint states
         self.timer_publish_configuration = self.create_timer(2, self.publish_selected_configuration)
+        # timer to publish the external forces as arrows in RViz
+        self.timer_publish_force = self.create_timer(1, self.publish_payload_force)
 
         self.get_logger().info('Robot description subscriber node started')
+
+
+    def publish_payload_force(self):
+        """
+        Publish the gravity force on the frame with id `id_force`.
+        """
+        external_force_array = MarkerArray()
+        
+        for frame in self.menu.get_item_state():
+
+            id_force = self.robot.get_parent_joint_id(frame["name"])
+            joint_position = self.robot.get_joint_placement(id_force)
+            arrow_force = Marker()
+
+            arrow_force.header.frame_id = "base_link" 
+            arrow_force.header.stamp = self.get_clock().now().to_msg()
+            arrow_force.ns = "external_force"
+            arrow_force.id = id_force
+            arrow_force.type = Marker.ARROW
+
+            # add the arrow if the frame is checked or delete it if not
+            if frame["checked"]:
+                arrow_force.action = Marker.ADD
+            else:
+                arrow_force.action = Marker.DELETE
+
+            arrow_force.scale.x = 0.20   # Length of the arrow
+            arrow_force.scale.y = 0.05   # Width of the arrow
+            arrow_force.scale.z = 0.05   # Height of the arrow
+            arrow_force.color.a = 1.0  # Alpha
+            arrow_force.color.r = 0.0
+            arrow_force.color.g = 0.0  # Green
+            arrow_force.color.b = 1.0
+
+            # Set the position of the arrow at the joint placement
+            arrow_force.pose.position.x = joint_position["x"]
+            arrow_force.pose.position.y = joint_position["y"]
+            arrow_force.pose.position.z = joint_position["z"]
+            # Set the direction of the arrow downwards
+            arrow_force.pose.orientation.x = 0.0
+            arrow_force.pose.orientation.y = 0.7071
+            arrow_force.pose.orientation.z = 0.0
+            arrow_force.pose.orientation.w = 0.7071
+            
+            external_force_array.markers.append(arrow_force)
+        
+        self.publisher_force.publish(external_force_array)
+
 
 
     def workspace_calculation(self):
@@ -97,10 +151,10 @@ class RobotDescriptionSubscriber(Node):
         Timer to publish the selected configuration.
         This will publish the joint states of the selected configuration in the menu.
         """
-        selected_configuration = self.menu.get_selected_configuration()
+        self.selected_configuration = self.menu.get_selected_configuration()
         
-        if selected_configuration is not None:
-            configs = self.robot.get_position_for_joint_states(self.valid_configurations[selected_configuration]["config"])
+        if self.selected_configuration is not None:
+            configs = self.robot.get_position_for_joint_states(self.valid_configurations[self.selected_configuration]["config"])
             joint_state = JointState()
             joint_state.header.stamp = self.get_clock().now().to_msg()
             
@@ -127,45 +181,54 @@ class RobotDescriptionSubscriber(Node):
 
     def joint_states_callback(self, msg):
         if self.robot is not None:
-            positions = list(msg.position)
-            name_position = list(msg.name)
-            v = msg.velocity if msg.velocity else self.robot.get_zero_velocity()
-            
-            # set the positions based on the joint states
-            q = self.robot.set_position(positions, name_position)
-            a = self.robot.get_zero_acceleration()
-                    
-            # create the array with only the checked frames (with external force applied)
-            self.checked_frames = np.array([check_frame["name"] for check_frame in self.menu.get_item_state() if check_frame['checked']])
-            
-            # if there are no checked frames, set the external force to None
-            if len(self.checked_frames) != 0:
-                # create the array with the masses of the checked frames
-                self.masses = np.array([check_frame["payload"] for check_frame in self.menu.get_item_state() if check_frame['checked']])
-                # create the external force with the masses and the checked frames
-                self.external_force = self.robot.create_ext_force(masses=self.masses, frame_name=self.checked_frames, q=q)
+            # if you are not using the calculated configuration from workspace, you can use the joint states to compute the torques because you don't have already the computed torques
+            if self.selected_configuration is None:
+                positions = list(msg.position)
+                name_position = list(msg.name)
+                v = msg.velocity if msg.velocity else self.robot.get_zero_velocity()
+                
+                # set the positions based on the joint states
+                q = self.robot.set_position(positions, name_position)
+                a = self.robot.get_zero_acceleration()
+                        
+                # create the array with only the checked frames (with external force applied)
+                self.checked_frames = np.array([check_frame["name"] for check_frame in self.menu.get_item_state() if check_frame['checked']])
+                
+                # if there are no checked frames, set the external force to None
+                if len(self.checked_frames) != 0:
+                    # create the array with the masses of the checked frames
+                    self.masses = np.array([check_frame["payload"] for check_frame in self.menu.get_item_state() if check_frame['checked']])
+                    # create the external force with the masses and the checked frames
+                    self.external_force = self.robot.create_ext_force(masses=self.masses, frame_name=self.checked_frames, q=q)
+                else:
+                    self.external_force = None
+
+                # compute the inverse dynamics
+                tau = self.robot.compute_inverse_dynamics(q, v, a, extForce=self.external_force)
+
+                # check the effort limits
+                status_efforts = self.robot.check_effort_limits(tau)
+                # print the torques
+                self.robot.print_torques(tau)
+
+                # get the positions of the joints where the torques are applied based on 
+                joints_position = self.robot.get_joints_placements(q)
+
+                # Publish the torques in RViz
+                self.publish_label_torques(tau, status_torques=status_efforts ,joints_position=joints_position)
+
             else:
-                self.external_force = None
+                # if you are using the calculated configuration from workspace, you can use the valid configurations to visualize the torques labels
+                # Publish the torque labels for the selected configuration
+                
+                # get the positions of the joints where the torques are applied based on 
+                joints_position = self.robot.get_joints_placements(self.valid_configurations[self.selected_configuration]["config"])
 
-            # compute the inverse dynamics
-            tau = self.robot.compute_inverse_dynamics(q, v, a, extForce=self.external_force)
+                # get the torques status (if the torques are within the limits)
+                status_efforts = self.robot.check_effort_limits(self.valid_configurations[self.selected_configuration]["tau"])
 
-            # check the effort limits
-            status_efforts = self.robot.check_effort_limits(tau)
-            # print the torques
-            self.robot.print_torques(tau)
-
-            # get the active frames
-            frames = self.robot.get_active_frames()
-
-            # get the positions of the joints where the torques are applied based on 
-            joints_position = self.robot.get_joints_placements(q)
-
-            # Publish the torques in RViz
-            self.publish_label_torques(tau, status_torques=status_efforts ,joints_position=joints_position)
-
-            # publish the external force as arrows in RViz
-            self.publish_payload_force(self.menu.get_item_state())
+                self.publish_label_torques(self.valid_configurations[self.selected_configuration]["tau"], status_torques=status_efforts ,joints_position=joints_position)
+            
 
 
 
@@ -300,54 +363,8 @@ class RobotDescriptionSubscriber(Node):
     
 
 
-    def publish_payload_force(self, frames_names : np.ndarray[str]):
-        """
-        Publish the gravity force on the frame with id `id_force`.
-
-        Args:
-            frame_names : The frames where the external forces is applied.
-        """
-        external_force_array = MarkerArray()
+    #def publish_payload_force(self, frames_names : np.ndarray[str]):
         
-        for frame in frames_names:
-
-            id_force = self.robot.get_parent_joint_id(frame["name"])
-            joint_position = self.robot.get_joint_placement(id_force)
-            arrow_force = Marker()
-
-            arrow_force.header.frame_id = "base_link" 
-            arrow_force.header.stamp = self.get_clock().now().to_msg()
-            arrow_force.ns = "external_force"
-            arrow_force.id = id_force
-            arrow_force.type = Marker.ARROW
-
-            # add the arrow if the frame is checked or delete it if not
-            if frame["checked"]:
-                arrow_force.action = Marker.ADD
-            else:
-                arrow_force.action = Marker.DELETE
-
-            arrow_force.scale.x = 0.20   # Length of the arrow
-            arrow_force.scale.y = 0.05   # Width of the arrow
-            arrow_force.scale.z = 0.05   # Height of the arrow
-            arrow_force.color.a = 1.0  # Alpha
-            arrow_force.color.r = 0.0
-            arrow_force.color.g = 0.0  # Green
-            arrow_force.color.b = 1.0
-
-            # Set the position of the arrow at the joint placement
-            arrow_force.pose.position.x = joint_position["x"]
-            arrow_force.pose.position.y = joint_position["y"]
-            arrow_force.pose.position.z = joint_position["z"]
-            # Set the direction of the arrow downwards
-            arrow_force.pose.orientation.x = 0.0
-            arrow_force.pose.orientation.y = 0.7071
-            arrow_force.pose.orientation.z = 0.0
-            arrow_force.pose.orientation.w = 0.7071
-            
-            external_force_array.markers.append(arrow_force)
-        
-        self.publisher_force.publish(external_force_array)
 
 
 
