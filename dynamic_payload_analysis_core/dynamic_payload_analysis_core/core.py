@@ -328,8 +328,8 @@ class TorqueCalculator:
         joint_id = self.model.getJointId(end_effector_name)  # Get the joint ID of the end effector
 
         # Set parameters for the inverse kinematics solver
-        eps = 1e-2 # reduce for more precision
-        IT_MAX = 400 # Maximum number of iterations
+        eps = 1e-3 # reduce for more precision
+        IT_MAX = 500 # Maximum number of iterations
         DT = 1e-1 
         damp = 1e-12
 
@@ -403,8 +403,6 @@ class TorqueCalculator:
         # Get the current position of the end effector
         end_effector_pos = self.data.oMi[id_end_effector]
         
-        
-        
         # Create an array to store all configurations
         configurations = []
         
@@ -438,28 +436,29 @@ class TorqueCalculator:
         for q in configurations:
             # Update the configuration of the robot model
             self.update_configuration(q["config"])
-            
+            # TODO Correct tau --> it is not right calculated , UNDERSTAND WHY
             # Compute the inverse dynamics for the current configuration
             tau = self.compute_inverse_dynamics(q["config"], self.get_zero_velocity(), self.get_zero_acceleration(),extForce=ext_forces)
 
-            # Compute all the collisions
-            pin.computeCollisions(self.model, self.data, self.geom_model, self.geom_data, q["config"], False)
-
-            # Print the status of collision for all collision pairs
-            for k in range(len(self.geom_model.collisionPairs)):
-                cr = self.geom_data.collisionResults[k]
-                cp = self.geom_model.collisionPairs[k]
-                print(
-                    "collision pair:",
-                    cp.first,
-                    ",",
-                    cp.second,
-                    "- collision:",
-                    "Yes" if cr.isCollision() else "No",
-                )
-            
             # Check if the torques are within the effort limits
             if self.check_effort_limits(tau).all():
+
+                # Compute all the collisions
+                pin.computeCollisions(self.model, self.data, self.geom_model, self.geom_data, q["config"], False)
+
+                # Print the status of collision for all collision pairs
+                for k in range(len(self.geom_model.collisionPairs)):
+                    cr = self.geom_data.collisionResults[k]
+                    cp = self.geom_model.collisionPairs[k]
+                    print(
+                        "collision pair:",
+                        cp.first,
+                        ",",
+                        cp.second,
+                        "- collision:",
+                        "Yes" if cr.isCollision() else "No",
+                    )
+                
                 valid_configurations.append({"config" : q["config"], "end_effector_pos" : q["end_effector_pos"], "tau" : tau })
                 
         return np.array(valid_configurations, dtype=object)
@@ -671,7 +670,8 @@ class TorqueCalculator:
             else:
                 within_limits[i] = True
         
-        print("All joints are within effort limits. \n")
+        if np.all(within_limits):
+            print("All joints are within effort limits. \n")
         
         return within_limits
 
