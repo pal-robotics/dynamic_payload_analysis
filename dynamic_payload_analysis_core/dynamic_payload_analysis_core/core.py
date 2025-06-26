@@ -328,8 +328,8 @@ class TorqueCalculator:
         joint_id = self.model.getJointId(end_effector_name)  # Get the joint ID of the end effector
 
         # Set parameters for the inverse kinematics solver
-        eps = 1e-1 # reduce for more precision
-        IT_MAX = 300 # Maximum number of iterations
+        eps = 1e-2 # reduce for more precision
+        IT_MAX = 400 # Maximum number of iterations
         DT = 1e-1 
         damp = 1e-12
 
@@ -430,7 +430,7 @@ class TorqueCalculator:
         
         :param configurations: Array of joint configurations to verify.
         :param ext_forces: Array of external forces to apply to the robot model.
-        :return: Array of valid configurations with related torques.
+        :return: Array of valid configurations with related torques in format: [{"config", "end_effector_pos, "tau"}].
         """
         
         valid_configurations = []
@@ -473,7 +473,7 @@ class TorqueCalculator:
         :param resolution (int): Resolution of the grid to compute configurations.
         :param end_effector_name (str): Name of the end effector joint to test.
         :param ext_forces: Array of external forces to apply to the robot model.
-        :return: Array of valid configurations that achieve the desired end effector position.
+        :return: Array of valid configurations that achieve the desired end effector position in format: [{"config", "end_effector_pos, "tau"}].
         """
         
         # Compute all configurations within the specified range
@@ -679,7 +679,7 @@ class TorqueCalculator:
 
     def set_position(self, pos_joints : list[float], name_positions : list[str] ) -> np.ndarray:
         """
-        Set the joint positions of the robot model.
+        Convert joint positions provided by jointstate publisher to the right format of the robot model.
         
         :param q: Joint configuration vector to set provided by joint state topic.
         """
@@ -705,6 +705,36 @@ class TorqueCalculator:
         self.update_configuration(q)
         
         return q
+    
+    def get_position_for_joint_states(self, q : np.ndarray) -> np.ndarray:
+        """
+        Convert configuration in pinocchio format to right format of joint states publisher
+
+        :param q : Joint configuration provided by function get_valid_workspace() 
+        :return: Joint positions in the format of joint state publisher.
+        """
+        
+        config = []
+        
+        current_selected_config = q
+
+        # Use this method to get the single values for joints, for example continuous joints (wheels) are represented as two values in the configuration vector but 
+        # in the joint state publisher they are represented as one value (angle)
+        # so we need to convert the configuration vector to the right format for joint state publisher
+        cont = 0
+        for i in range(1, self.model.njoints):
+            if self.model.joints[i].nq == 2:
+                # for continuous joints (wheels)
+                config.append({ "q" : math.atan2(current_selected_config[cont+1], current_selected_config[cont]), "joint_name" : self.model.names[i] })
+                
+            elif self.model.joints[i].nq == 1:
+                # for revolute joints
+                config.append({"q" : current_selected_config[cont], "joint_name" : self.model.names[i]})
+            
+            cont += self.model.joints[i].nq
+        
+        return config
+
 
     def print_configuration(self, q : np.ndarray = None):
         """
@@ -728,7 +758,11 @@ class TorqueCalculator:
         """
         
         self.update_configuration(q)
-        placements = np.array([({"name" : self.model.names[i],"type" : self.model.joints[i].shortname() , "x": self.data.oMi[i].translation[0], "y": self.data.oMi[i].translation[1], "z": self.data.oMi[i].translation[2]}) for i in range(1, self.model.njoints)], dtype=object)
+        placements = np.array([({"name" : self.model.names[i],
+                                 "type" : self.model.joints[i].shortname() , 
+                                 "x": self.data.oMi[i].translation[0], 
+                                 "y": self.data.oMi[i].translation[1], 
+                                 "z": self.data.oMi[i].translation[2]}) for i in range(1, self.model.njoints)], dtype=object)
         
         return placements
     
