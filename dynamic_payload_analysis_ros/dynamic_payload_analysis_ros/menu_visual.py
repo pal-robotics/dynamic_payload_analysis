@@ -171,6 +171,9 @@ class MenuPayload():
                     self.menu_handler.setVisible(sub_item, False)
                     self.menu_handler.setCheckState(sub_item, MenuHandler.UNCHECKED)
             
+             # check if the item is the reset payloads or compute workspace item and skip the unchanging of the check state
+            if item.title == "Reset payloads" or item.title == "Compute workspace":
+                continue
                 
             # set the checked of frame to unchecked 
             self.menu_handler.setCheckState(i,MenuHandler.UNCHECKED)
