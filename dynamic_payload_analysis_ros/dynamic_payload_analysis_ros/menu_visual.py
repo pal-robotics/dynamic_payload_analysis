@@ -170,9 +170,13 @@ class MenuPayload():
                 for sub_item in item.sub_entries:
                     self.menu_handler.setVisible(sub_item, False)
                     self.menu_handler.setCheckState(sub_item, MenuHandler.UNCHECKED)
+            
                 
             # set the checked of frame to unchecked 
             self.menu_handler.setCheckState(i,MenuHandler.UNCHECKED)
+        
+        # reset the selected configuration
+        self.selected_configuration = None
 
         # reapply the menu handler and server changes
         self.menu_handler.reApply(self.server)
