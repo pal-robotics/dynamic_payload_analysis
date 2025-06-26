@@ -91,15 +91,15 @@ class RobotDescriptionSubscriber(Node):
 
     def publish_selected_configuration(self):
         
-        current_configurations = self.menu.get_selected_configuration()
+        selected_configuration = self.menu.get_selected_configuration()
         
-        if current_configurations is not None:
-            configs = self.robot.get_position_for_joint_states(self.valid_configurations, current_configurations)
+        if selected_configuration is not None:
+            configs = self.robot.get_position_for_joint_states(self.valid_configurations[selected_configuration]["config"])
             joint_state = JointState()
             joint_state.header.stamp = self.get_clock().now().to_msg()
             
-            joint_state.name = configs["joint_name"]
-            joint_state.position = configs["q"]
+            joint_state.name = [joint["joint_name"] for joint in configs]
+            joint_state.position = [joint["q"] for joint in configs]
             #joint_state.position =
             self.publisher_joint_states.publish(joint_state)
 
