@@ -376,8 +376,7 @@ class TorqueCalculator:
         else:
             print(
                 "\n"
-                "Warning: the iterative algorithm has not reached convergence "
-                "to the desired precision"
+                "Warning: the iterative algorithm has not reached convergence to the desired precision"
             )
             return None  # Return None if convergence is not achieved
         
@@ -422,7 +421,7 @@ class TorqueCalculator:
     
 
 
-    def verify_configurations(self, configurations : np.ndarray, ext_forces : np.ndarray) -> np.ndarray:
+    def verify_configurations(self, configurations : np.ndarray, masses : np.ndarray, checked_frames : np.ndarray) -> np.ndarray:
         """
         Verify the configurations to check if they are valid.
         
@@ -436,7 +435,9 @@ class TorqueCalculator:
         for q in configurations:
             # Update the configuration of the robot model
             self.update_configuration(q["config"])
-            # TODO Correct tau --> it is not right calculated , UNDERSTAND WHY
+            
+            # Create external forces based on the masses and checked frames
+            ext_forces = self.create_ext_force(masses, checked_frames, q["config"])
             # Compute the inverse dynamics for the current configuration
             tau = self.compute_inverse_dynamics(q["config"], self.get_zero_velocity(), self.get_zero_acceleration(),extForce=ext_forces)
 
@@ -464,7 +465,7 @@ class TorqueCalculator:
         return np.array(valid_configurations, dtype=object)
         
 
-    def get_valid_workspace(self, range : int, resolution : int, end_effector_name : str, ext_forces : np.ndarray) -> np.ndarray:
+    def get_valid_workspace(self, range : int, resolution : int, end_effector_name : str, masses : np.ndarray, checked_frames: np.ndarray) -> np.ndarray:
         """
         Get the valid workspace of the robot model by computing all configurations within a specified range.
         
@@ -479,7 +480,7 @@ class TorqueCalculator:
         configurations = self.compute_all_configurations(range,resolution, end_effector_name)
         
         # Verify the configurations to check if they are valid
-        valid_configurations = self.verify_configurations(configurations, ext_forces)
+        valid_configurations = self.verify_configurations(configurations, masses, checked_frames)
         
         return valid_configurations
     
@@ -528,7 +529,7 @@ class TorqueCalculator:
         return J_frame
     
 
-    def get_normalized_unified_torque(self, tau : np.ndarray, arm : str) -> np.ndarray:
+    def get_normalized_unified_torques(self, tau : np.ndarray) -> np.ndarray:
         """
         Normalize the torques vector to a unified scale.
         
@@ -536,22 +537,17 @@ class TorqueCalculator:
         :param arm: Arm name to filter the torques vector.
         :return: Normalized torques vector.
         """
-        # TODO Check only the torques related to one arm and not all the robot
         if tau is None:
             raise ValueError("Torques vector is None")
         
-        sum = 0
-        n_joints = 0
+        norm_tau = []
 
         # Normalize the torques vector
-        # TODO : Find a better way to normalize the torques vector 
-        for i, torque in enumerate(tau, start=1):
-            # sum only the torques related to the selected arm (not considering the torso joint torque because is common to all the configurations)
-            if arm in self.model.names[i] and "wheel" not in self.model.names[i] and "gripper" not in self.model.names[i]:
-                sum += abs(torque) / self.model.effortLimit[i-1]
-                n_joints += 1
+        for i, torque in enumerate(tau):
+            norm_tau.append(abs(torque) / self.model.effortLimit[i])
+            
         
-        return sum / n_joints
+        return norm_tau
     
 
     def check_zero(self, vec : np.ndarray) -> bool:
@@ -749,6 +745,8 @@ class TorqueCalculator:
             print(f"  Rotation:\n{placement.rotation}")
             print(f"  Translation:\n{placement.translation}")
     
+
+
     def get_joints_placements(self, q : np.ndarray) -> np.ndarray:
         """
         Get the placements of the joints in the robot model.
