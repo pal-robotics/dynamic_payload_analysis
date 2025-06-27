@@ -47,7 +47,7 @@ class RobotDescriptionSubscriber(Node):
         self.publisher_rviz_torque = self.create_publisher(MarkerArray, '/torque_visualization', 10)
 
         # Pusblisher for point cloud workspace area
-        self.publisher_workspace_area = self.create_publisher(Marker, '/workspace_area', 10)
+        self.publisher_workspace_area = self.create_publisher(MarkerArray, '/workspace_area', 10)
 
         # Publisher for point names in the workspace area
         self.publisher_workspace_area_names = self.create_publisher(MarkerArray, '/workspace_area_names', 10)
@@ -65,6 +65,8 @@ class RobotDescriptionSubscriber(Node):
 
         self.external_force = None
 
+        self.checked_frames = []
+
         # variable to store the currente selected configuration from the workspace menu
         self.valid_configurations = None
 
@@ -72,9 +74,11 @@ class RobotDescriptionSubscriber(Node):
         self.selected_configuration = None
 
         # timer to compute the valid workspace area 
-        self.timer_workspace_calculation = self.create_timer(3, self.workspace_calculation)
+        self.timer_workspace_calculation = self.create_timer(1, self.workspace_calculation)
         # timer to publish the selected configuration in joint states
         self.timer_publish_configuration = self.create_timer(2, self.publish_selected_configuration)
+        # timer to calculate the external forces based on the checked frames in the menu
+        self.timer_update_checked_frames = self.create_timer(0.5, self.update_checked_frames)
         # timer to publish the external forces as arrows in RViz
         self.timer_publish_force = self.create_timer(1, self.publish_payload_force)
 
@@ -134,15 +138,18 @@ class RobotDescriptionSubscriber(Node):
         Timer to compute the valid workspace area.
         """
         if self.menu.get_workspace_state():
-            self.valid_configurations = self.robot.get_valid_workspace(2, 0.3, "gripper_left_finger_joint", self.external_force)
+            self.valid_configurations = self.robot.get_valid_workspace(2, 0.3, "gripper_left_finger_joint", self.masses, self.checked_frames)
+            
+            # insert the valid configurations in the menu
+            self.menu.insert_dropdown_configuration(self.valid_configurations)
 
+            # set the workspace state to False to stop the computation
+            self.menu.set_workspace_state(False)
+
+        if self.valid_configurations is not None:
             # publish the workspace area
             self.publish_workspace_area(self.valid_configurations)
-            # set the workspace state to False to stop the computation
-            self.menu.insert_dropdown_configuration(self.valid_configurations)
             
-            # reset the workspace state to False to stop the computation
-            self.menu.set_workspace_state(False)
 
 
 
@@ -178,36 +185,48 @@ class RobotDescriptionSubscriber(Node):
 
         # self.robot.print_configuration()
 
+    
+    def update_checked_frames(self):
+        """
+        Function to update the external forces based on the checked frames in the menu.    
+        """
+        # create the array with only the checked frames (with external force applied)
+        self.checked_frames = np.array([check_frame["name"] for check_frame in self.menu.get_item_state() if check_frame['checked']])
+        
+        if len(self.checked_frames) != 0:
+            # create the array with the masses of the checked frames
+            self.masses = np.array([check_frame["payload"] for check_frame in self.menu.get_item_state() if check_frame['checked']])
+        
+
 
     def joint_states_callback(self, msg):
         if self.robot is not None:
+            # TODO When you don't use joint states publisher gui, you don't see live update in the torques labels
+
             # if you are not using the calculated configuration from workspace, you can use the joint states to compute the torques because you don't have already the computed torques
             if self.selected_configuration is None:
-                positions = list(msg.position)
-                name_position = list(msg.name)
+                self.positions = list(msg.position)
+                self.name_positions = list(msg.name)
                 v = msg.velocity if msg.velocity else self.robot.get_zero_velocity()
                 
                 # set the positions based on the joint states
-                q = self.robot.set_position(positions, name_position)
+                q = self.robot.set_position(self.positions, self.name_positions)
                 a = self.robot.get_zero_acceleration()
-                        
-                # create the array with only the checked frames (with external force applied)
-                self.checked_frames = np.array([check_frame["name"] for check_frame in self.menu.get_item_state() if check_frame['checked']])
-                
+
                 # if there are no checked frames, set the external force to None
                 if len(self.checked_frames) != 0:
-                    # create the array with the masses of the checked frames
-                    self.masses = np.array([check_frame["payload"] for check_frame in self.menu.get_item_state() if check_frame['checked']])
                     # create the external force with the masses and the checked frames
                     self.external_force = self.robot.create_ext_force(masses=self.masses, frame_name=self.checked_frames, q=q)
                 else:
                     self.external_force = None
+                
 
                 # compute the inverse dynamics
                 tau = self.robot.compute_inverse_dynamics(q, v, a, extForce=self.external_force)
 
                 # check the effort limits
                 status_efforts = self.robot.check_effort_limits(tau)
+
                 # print the torques
                 self.robot.print_torques(tau)
 
@@ -220,10 +239,9 @@ class RobotDescriptionSubscriber(Node):
             else:
                 # if you are using the calculated configuration from workspace, you can use the valid configurations to visualize the torques labels
                 # Publish the torque labels for the selected configuration
-                
+          
                 # get the positions of the joints where the torques are applied based on 
                 joints_position = self.robot.get_joints_placements(self.valid_configurations[self.selected_configuration]["config"])
-
                 # get the torques status (if the torques are within the limits)
                 status_efforts = self.robot.check_effort_limits(self.valid_configurations[self.selected_configuration]["tau"])
 
@@ -292,25 +310,13 @@ class RobotDescriptionSubscriber(Node):
         marker_point_names = MarkerArray()
 
         # Create a Marker for the workspace area using points
-        marker_points = Marker()
-        marker_points.header.frame_id = "base_link"
-        marker_points.header.stamp = self.get_clock().now().to_msg()
-        marker_points.ns = "workspace_area"
-        marker_points.id = 0
-        marker_points.type = Marker.SPHERE_LIST
-        marker_points.action = Marker.ADD
-        marker_points.scale.x = 0.03  # Size of the spheres
-        marker_points.scale.y = 0.03
-        marker_points.scale.z = 0.03
-        
-        
-        points_array = []
-        points_colors = []
+        marker_points = MarkerArray()
 
+        cont = 0
         # Iterate through the valid configurations and create markers
         for i, valid_config in enumerate(valid_configs):
             
-            # create the label for the point
+            # create the label for the points
             marker_point_name = Marker()
             marker_point_name.header.frame_id = "base_link"
             marker_point_name.header.stamp = self.get_clock().now().to_msg()
@@ -332,38 +338,44 @@ class RobotDescriptionSubscriber(Node):
             marker_point_name.color.b = 1.0  # Blue
 
             # create the point to visualize the possible end effector position
-            point = Point()
-
-            point.x = valid_config["end_effector_pos"][0]
-            point.y = valid_config["end_effector_pos"][1]
-            point.z = valid_config["end_effector_pos"][2]
-
-            # Add color based on the torque
-            color = ColorRGBA()
-            normalized_torque = self.robot.get_normalized_unified_torque(valid_config["tau"], "left")
-
-            color.r = normalized_torque  # More red as torque approaches 1
-            color.g = 1.0 - normalized_torque  # More green as torque approaches 0
-            color.b = 0.0  # No blue component
-            color.a = 1.0  # Alpha
             
-            points_colors.append(color)
-            points_array.append(point)
+            # get the joint positions for the valid configuration
+            joint_positions = self.robot.get_joints_placements(valid_config["config"])
+
+            norm_joints_torques = self.robot.get_normalized_unified_torques(valid_config["tau"])
+            
+            for joint_pos,tau in zip(joint_positions,norm_joints_torques):
+                point = Marker()
+                point.header.frame_id = "base_link"
+                point.header.stamp = self.get_clock().now().to_msg()
+                point.ns = joint_pos["name"]
+                point.id = cont
+                point.type = Marker.SPHERE
+                point.action = Marker.ADD
+                point.scale.x = 0.02  # Size of the sphere
+                point.scale.y = 0.02
+                point.scale.z = 0.02
+                
+                point.pose.position.x = joint_pos["x"]
+                point.pose.position.y = joint_pos["y"]
+                point.pose.position.z = joint_pos["z"]
+                point.pose.orientation.w = 1.0
+                point.color.a = 1.0  # Alpha
+                point.color.r = tau  # Red
+                point.color.g = 1 - tau  # Green
+                point.color.b = 0.0  # Blue
+
+                cont += 1
+
+                # Add the point to the points array
+                marker_points.markers.append(point)
 
             # Add the marker for the point
             marker_point_names.markers.append(marker_point_name)
 
-        marker_points.points = points_array
-        marker_points.colors = points_colors
-
         # Publish the marker points and names
         self.publisher_workspace_area.publish(marker_points)
         self.publisher_workspace_area_names.publish(marker_point_names)
-
-    
-
-
-    #def publish_payload_force(self, frames_names : np.ndarray[str]):
         
 
 
