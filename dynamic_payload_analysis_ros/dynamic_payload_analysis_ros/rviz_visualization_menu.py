@@ -67,6 +67,8 @@ class RobotDescriptionSubscriber(Node):
 
         self.checked_frames = []
 
+        self.masses = None
+
         # variable to store the currente selected configuration from the workspace menu
         self.valid_configurations = None
 
@@ -137,15 +139,20 @@ class RobotDescriptionSubscriber(Node):
         """
         Timer to compute the valid workspace area.
         """
+        # if the user choose to compute the workspace area then compute the valid configurations
         if self.menu.get_workspace_state():
             self.valid_configurations = self.robot.get_valid_workspace(2, 0.3, "gripper_left_finger_joint", self.masses, self.checked_frames)
             
             # insert the valid configurations in the menu
             self.menu.insert_dropdown_configuration(self.valid_configurations)
 
+            # clear all the workspace area markers
+            self.clear_workspace_area_markers()
+
             # set the workspace state to False to stop the computation
             self.menu.set_workspace_state(False)
 
+        # if there are valid configurations, publish the workspace area
         if self.valid_configurations is not None:
             # publish the workspace area
             self.publish_workspace_area(self.valid_configurations)
@@ -160,6 +167,7 @@ class RobotDescriptionSubscriber(Node):
         """
         self.selected_configuration = self.menu.get_selected_configuration()
         
+        # if there is a selected configuration, publish the joint states based on the valid configurations calculated previously
         if self.selected_configuration is not None:
             configs = self.robot.get_position_for_joint_states(self.valid_configurations[self.selected_configuration]["config"])
             joint_state = JointState()
@@ -169,6 +177,20 @@ class RobotDescriptionSubscriber(Node):
             joint_state.position = [joint["q"] for joint in configs]
             #joint_state.position =
             self.publisher_joint_states.publish(joint_state)
+
+        else:
+            # if there is no selected configuration, publish the joint states with zero positions
+            joint_state = JointState()
+            joint_state.header.stamp = self.get_clock().now().to_msg()
+
+            joint_state.name = self.robot.get_joints().tolist()
+            zero_config = self.robot.get_position_for_joint_states(self.robot.get_zero_configuration())
+            joint_state.position = [joint["q"] for joint in zero_config]
+
+            self.publisher_joint_states.publish(joint_state)
+
+            # if there is no selected configuration, clear the workspace area markers
+            self.clear_workspace_area_markers()
 
         
 
@@ -231,7 +253,7 @@ class RobotDescriptionSubscriber(Node):
                 self.robot.print_torques(tau)
 
                 # get the positions of the joints where the torques are applied based on 
-                joints_position = self.robot.get_joints_placements(q)
+                joints_position, offset_z = self.robot.get_joints_placements(q)
 
                 # Publish the torques in RViz
                 self.publish_label_torques(tau, status_torques=status_efforts ,joints_position=joints_position)
@@ -239,9 +261,9 @@ class RobotDescriptionSubscriber(Node):
             else:
                 # if you are using the calculated configuration from workspace, you can use the valid configurations to visualize the torques labels
                 # Publish the torque labels for the selected configuration
-          
+
                 # get the positions of the joints where the torques are applied based on 
-                joints_position = self.robot.get_joints_placements(self.valid_configurations[self.selected_configuration]["config"])
+                joints_position, offset_z = self.robot.get_joints_placements(self.valid_configurations[self.selected_configuration]["config"])
                 # get the torques status (if the torques are within the limits)
                 status_efforts = self.robot.check_effort_limits(self.valid_configurations[self.selected_configuration]["tau"])
 
@@ -297,6 +319,21 @@ class RobotDescriptionSubscriber(Node):
         self.publisher_rviz_torque.publish(marker_array)
         
 
+    def clear_workspace_area_markers(self):
+        """
+        Clear the workspace area markers in RViz.
+        This will publish an empty MarkerArray to remove the previous markers.
+        """
+        # create an empty MarkerArray to clear the markers with a DELETEALL action
+        marker_array_msg = MarkerArray()
+        marker = Marker()
+        marker.id = 0
+        marker.action = Marker.DELETEALL
+        marker_array_msg.markers.append(marker)
+
+        # Publish the empty MarkerArray to clear the markers
+        self.publisher_workspace_area.publish(marker_array_msg)
+        self.publisher_workspace_area_names.publish(marker_array_msg)
 
 
     def publish_workspace_area(self, valid_configs: np.ndarray ):
@@ -340,7 +377,7 @@ class RobotDescriptionSubscriber(Node):
             # create the point to visualize the possible end effector position
             
             # get the joint positions for the valid configuration
-            joint_positions = self.robot.get_joints_placements(valid_config["config"])
+            joint_positions, offset_z = self.robot.get_joints_placements(valid_config["config"])
 
             norm_joints_torques = self.robot.get_normalized_unified_torques(valid_config["tau"])
             
@@ -358,7 +395,7 @@ class RobotDescriptionSubscriber(Node):
                 
                 point.pose.position.x = joint_pos["x"]
                 point.pose.position.y = joint_pos["y"]
-                point.pose.position.z = joint_pos["z"]
+                point.pose.position.z = joint_pos["z"] - offset_z
                 point.pose.orientation.w = 1.0
                 point.color.a = 1.0  # Alpha
                 point.color.r = tau  # Red
