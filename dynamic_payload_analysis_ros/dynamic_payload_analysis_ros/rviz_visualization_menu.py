@@ -141,7 +141,7 @@ class RobotDescriptionSubscriber(Node):
         """
         # if the user choose to compute the workspace area then compute the valid configurations
         if self.menu.get_workspace_state():
-            self.valid_configurations = self.robot.get_valid_workspace(2, 0.3, "gripper_left_finger_joint", self.masses, self.checked_frames)
+            self.valid_configurations = self.robot.get_valid_workspace(2, 0.3, "gripper_left_finger_joint", "gripper_right_finger_joint", self.masses, self.checked_frames)
             
             # insert the valid configurations in the menu
             self.menu.insert_dropdown_configuration(self.valid_configurations)
@@ -189,8 +189,7 @@ class RobotDescriptionSubscriber(Node):
 
             self.publisher_joint_states.publish(joint_state)
 
-            # if there is no selected configuration, clear the workspace area markers
-            self.clear_workspace_area_markers()
+            
 
         
 
@@ -218,13 +217,13 @@ class RobotDescriptionSubscriber(Node):
         if len(self.checked_frames) != 0:
             # create the array with the masses of the checked frames
             self.masses = np.array([check_frame["payload"] for check_frame in self.menu.get_item_state() if check_frame['checked']])
-        
+        else:
+            # if there are no checked frames, set the masses to None
+            self.masses = None
 
 
     def joint_states_callback(self, msg):
         if self.robot is not None:
-            # TODO When you don't use joint states publisher gui, you don't see live update in the torques labels
-
             # if you are not using the calculated configuration from workspace, you can use the joint states to compute the torques because you don't have already the computed torques
             if self.selected_configuration is None:
                 self.positions = list(msg.position)
@@ -382,30 +381,32 @@ class RobotDescriptionSubscriber(Node):
             norm_joints_torques = self.robot.get_normalized_unified_torques(valid_config["tau"])
             
             for joint_pos,tau in zip(joint_positions,norm_joints_torques):
-                point = Marker()
-                point.header.frame_id = "base_link"
-                point.header.stamp = self.get_clock().now().to_msg()
-                point.ns = joint_pos["name"]
-                point.id = cont
-                point.type = Marker.SPHERE
-                point.action = Marker.ADD
-                point.scale.x = 0.02  # Size of the sphere
-                point.scale.y = 0.02
-                point.scale.z = 0.02
-                
-                point.pose.position.x = joint_pos["x"]
-                point.pose.position.y = joint_pos["y"]
-                point.pose.position.z = joint_pos["z"] - offset_z
-                point.pose.orientation.w = 1.0
-                point.color.a = 1.0  # Alpha
-                point.color.r = tau  # Red
-                point.color.g = 1 - tau  # Green
-                point.color.b = 0.0  # Blue
+                # print only the points for the corrisponding arm, in this way we can visualize the workspace area for each arm separately
+                if valid_config["arm"] in joint_pos["name"] : 
+                    point = Marker()
+                    point.header.frame_id = "base_link"
+                    point.header.stamp = self.get_clock().now().to_msg()
+                    point.ns = joint_pos["name"]
+                    point.id = cont
+                    point.type = Marker.SPHERE
+                    point.action = Marker.ADD
+                    point.scale.x = 0.02  # Size of the sphere
+                    point.scale.y = 0.02
+                    point.scale.z = 0.02
+                    
+                    point.pose.position.x = joint_pos["x"]
+                    point.pose.position.y = joint_pos["y"]
+                    point.pose.position.z = joint_pos["z"] - offset_z
+                    point.pose.orientation.w = 1.0
+                    point.color.a = 1.0  # Alpha
+                    point.color.r = tau  # Red
+                    point.color.g = 1 - tau  # Green
+                    point.color.b = 0.0  # Blue
 
-                cont += 1
+                    cont += 1
 
-                # Add the point to the points array
-                marker_points.markers.append(point)
+                    # Add the point to the points array
+                    marker_points.markers.append(point)
 
             # Add the marker for the point
             marker_point_names.markers.append(marker_point_name)

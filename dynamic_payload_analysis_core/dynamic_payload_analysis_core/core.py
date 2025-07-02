@@ -421,18 +421,20 @@ class TorqueCalculator:
     
 
 
-    def verify_configurations(self, configurations : np.ndarray, masses : np.ndarray, checked_frames : np.ndarray) -> np.ndarray:
+    def verify_configurations(self, configurations_left : np.ndarray, configurations_right : np.ndarray, masses : np.ndarray, checked_frames : np.ndarray) -> np.ndarray:
         """
         Verify the configurations to check if they are valid.
         
-        :param configurations: Array of joint configurations to verify.
+        :param configurations_left: Array of joint configurations to verify for the left arm.
+        :param configurations_right: Array of joint configurations to verify for the right arm.
         :param ext_forces: Array of external forces to apply to the robot model.
         :return: Array of valid configurations with related torques in format: [{"config", "end_effector_pos, "tau"}].
         """
         
         valid_configurations = []
         
-        for q in configurations:
+        # check valid configurations for left arm
+        for q in configurations_left:
             # Update the configuration of the robot model
             self.update_configuration(q["config"])
             
@@ -446,7 +448,7 @@ class TorqueCalculator:
                 tau = self.compute_inverse_dynamics(q["config"], self.get_zero_velocity(), self.get_zero_acceleration())
 
             # Check if the torques are within the effort limits
-            if self.check_effort_limits(tau).all():
+            if self.check_effort_limits(tau,"left").all():
 
                 # Compute all the collisions
                 pin.computeCollisions(self.model, self.data, self.geom_model, self.geom_data, q["config"], False)
@@ -464,27 +466,66 @@ class TorqueCalculator:
                         "Yes" if cr.isCollision() else "No",
                     )
                 
-                valid_configurations.append({"config" : q["config"], "end_effector_pos" : q["end_effector_pos"], "tau" : tau })
+                valid_configurations.append({"config" : q["config"], "end_effector_pos" : q["end_effector_pos"], "tau" : tau, "arm" : "left" })
+
+        # check valid configurations for right arm
+        for q in configurations_right:
+            # Update the configuration of the robot model
+            self.update_configuration(q["config"])
+            
+            if masses is not None and checked_frames is not None:
+                # Create external forces based on the masses and checked frames
+                ext_forces = self.create_ext_force(masses, checked_frames, q["config"])
+                # Compute the inverse dynamics for the current configuration
+                tau = self.compute_inverse_dynamics(q["config"], self.get_zero_velocity(), self.get_zero_acceleration(),extForce=ext_forces)
+            else:
+                # Compute the inverse dynamics for the current configuration without external forces
+                tau = self.compute_inverse_dynamics(q["config"], self.get_zero_velocity(), self.get_zero_acceleration())
+
+            # Check if the torques are within the effort limits
+            if self.check_effort_limits(tau,"right").all():
+
+                # Compute all the collisions
+                pin.computeCollisions(self.model, self.data, self.geom_model, self.geom_data, q["config"], False)
+
+                # Print the status of collision for all collision pairs
+                for k in range(len(self.geom_model.collisionPairs)):
+                    cr = self.geom_data.collisionResults[k]
+                    cp = self.geom_model.collisionPairs[k]
+                    print(
+                        "collision pair:",
+                        cp.first,
+                        ",",
+                        cp.second,
+                        "- collision:",
+                        "Yes" if cr.isCollision() else "No",
+                    )
+                
+                valid_configurations.append({"config" : q["config"], "end_effector_pos" : q["end_effector_pos"], "tau" : tau, "arm" : "right" })
                 
         return np.array(valid_configurations, dtype=object)
         
 
-    def get_valid_workspace(self, range : int, resolution : int, end_effector_name : str, masses : np.ndarray, checked_frames: np.ndarray) -> np.ndarray:
+    def get_valid_workspace(self, range : int, resolution : int, end_effector_name_left : str, end_effector_name_right, masses : np.ndarray, checked_frames: np.ndarray) -> np.ndarray:
         """
         Get the valid workspace of the robot model by computing all configurations within a specified range.
         
         :param range (int): Range as side of a square where in the center there is the actual position of end effector.
         :param resolution (int): Resolution of the grid to compute configurations.
-        :param end_effector_name (str): Name of the end effector joint to test.
-        :param ext_forces: Array of external forces to apply to the robot model.
+        :param end_effector_name_left (str): Name of the end effector joint to test.
+        :param end_effector_name_right (str): Name of the end effector joint to test.
+        :param masses (np.ndarray): Array of masses to apply to the robot model.
+        :param checked_frames (np.ndarray): Array of frame names where the external forces are applied.
         :return: Array of valid configurations that achieve the desired end effector position in format: [{"config", "end_effector_pos, "tau"}].
         """
         
-        # Compute all configurations within the specified range
-        configurations = self.compute_all_configurations(range,resolution, end_effector_name)
+        # Compute all configurations within the specified range for the left arm
+        configurations_l = self.compute_all_configurations(range,resolution, end_effector_name_left)
+        # Compute all configurations within the specified range for the right arm
+        configurations_r = self.compute_all_configurations(range,resolution, end_effector_name_right)
         
-        # Verify the configurations to check if they are valid
-        valid_configurations = self.verify_configurations(configurations, masses, checked_frames)
+        # Verify the configurations to check if they are valid for both arms
+        valid_configurations = self.verify_configurations(configurations_l,configurations_r, masses, checked_frames)
         
         return valid_configurations
     
@@ -649,30 +690,47 @@ class TorqueCalculator:
         return within_limits
 
 
-    def check_effort_limits(self, tau : np.ndarray) -> np.ndarray:
+    def check_effort_limits(self, tau : np.ndarray, arm : str = None) -> np.ndarray:
         """
         Check if the torques vector is within the effort limits of the robot model.
         
         :param tau: Torques vector to check.
+        :param arm: Arm name to filter the torques vector, right or left.
         :return: Array of booleans indicating if each joint is within the effort limits.
         """
         if tau is None:
             raise ValueError("Torques vector is None")
         
         # array to store if the joint is within the limits
-        within_limits = np.zeros(self.model.njoints - 1, dtype=bool)
+        within_limits = np.array([], dtype=bool)
 
-        # Check if the torques are within the limits
-        for i in range(self.model.njoints -1): 
-            if abs(tau[i]) > self.model.effortLimit[i]:
-                print(f"\033[91mJoint {i+2} exceeds effort limit: {tau[i]} > {self.model.effortLimit[i]} \033[0m\n")
-                within_limits[i] = False
-            else:
-                within_limits[i] = True
+        # if arm is not specified, check all joints
+        if arm is None:
+            # Check if the torques are within the limits
+            for i in range(self.model.njoints -1): 
+                if abs(tau[i]) > self.model.effortLimit[i]:
+                    print(f"\033[91mJoint {i+2} exceeds effort limit: {tau[i]} > {self.model.effortLimit[i]} \033[0m\n")
+                    within_limits = np.append(within_limits, False)
+                else:
+                    within_limits = np.append(within_limits, True)
+            
+            if np.all(within_limits):
+                print("All joints are within effort limits. \n")
         
-        if np.all(within_limits):
-            print("All joints are within effort limits. \n")
-        
+        else:
+            # Check if the torques are within the limits
+            for i in range(self.model.njoints -1):
+                if arm in self.model.names[i]:
+                    if abs(tau[i]) > self.model.effortLimit[i]:
+                        print(f"\033[91mJoint {i+2} exceeds effort limit: {tau[i]} > {self.model.effortLimit[i]} \033[0m\n")
+                        within_limits = np.append(within_limits, False)
+                    else:
+                        within_limits = np.append(within_limits, True)
+            
+            if np.all(within_limits):
+                print("All joints are within effort limits. \n")
+
+
         return within_limits
 
 
