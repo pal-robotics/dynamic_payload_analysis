@@ -436,10 +436,14 @@ class TorqueCalculator:
             # Update the configuration of the robot model
             self.update_configuration(q["config"])
             
-            # Create external forces based on the masses and checked frames
-            ext_forces = self.create_ext_force(masses, checked_frames, q["config"])
-            # Compute the inverse dynamics for the current configuration
-            tau = self.compute_inverse_dynamics(q["config"], self.get_zero_velocity(), self.get_zero_acceleration(),extForce=ext_forces)
+            if masses is not None and checked_frames is not None:
+                # Create external forces based on the masses and checked frames
+                ext_forces = self.create_ext_force(masses, checked_frames, q["config"])
+                # Compute the inverse dynamics for the current configuration
+                tau = self.compute_inverse_dynamics(q["config"], self.get_zero_velocity(), self.get_zero_acceleration(),extForce=ext_forces)
+            else:
+                # Compute the inverse dynamics for the current configuration without external forces
+                tau = self.compute_inverse_dynamics(q["config"], self.get_zero_velocity(), self.get_zero_acceleration())
 
             # Check if the torques are within the effort limits
             if self.check_effort_limits(tau).all():
@@ -746,15 +750,16 @@ class TorqueCalculator:
             print(f"  Translation:\n{placement.translation}")
     
 
-
-    def get_joints_placements(self, q : np.ndarray) -> np.ndarray:
+    def get_joints_placements(self, q : np.ndarray) -> np.ndarray | float:
         """
         Get the placements of the joints in the robot model.
         
         :param q: Joint configuration vector.
-        :return: Array of joint placements with names of joint.
+        :return: Array of joint placements with names of joint, and z offset of base link.
         """
-        
+        base_link_id = self.model.getFrameId("base_link")
+        offset_z = self.data.oMf[base_link_id].translation[2]  # Get the z offset of the base link
+
         self.update_configuration(q)
         placements = np.array([({"name" : self.model.names[i],
                                  "type" : self.model.joints[i].shortname() , 
@@ -762,7 +767,7 @@ class TorqueCalculator:
                                  "y": self.data.oMi[i].translation[1], 
                                  "z": self.data.oMi[i].translation[2]}) for i in range(1, self.model.njoints)], dtype=object)
         
-        return placements
+        return placements, offset_z
     
 
     def get_joint_placement(self, joint_id : int) -> dict:
