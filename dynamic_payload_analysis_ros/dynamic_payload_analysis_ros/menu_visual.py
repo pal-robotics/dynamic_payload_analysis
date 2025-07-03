@@ -59,6 +59,7 @@ class MenuPayload():
         self.menu_handler.apply(self.server, 'menu_frames')
         self.server.applyChanges()
 
+
     def insert_frame(self, name):
         """
         Insert a new item(frame) in the checkbox menu of frames.
@@ -122,15 +123,13 @@ class MenuPayload():
          # get the entry object from the menu handler with all the informations about the item (command field is used to store the parent id)
         config_context = self.menu_handler.entry_contexts_[handle]
 
-        # get the parent id of the selected payload stored in the command field
+        # get the parent id of the selected configuration stored in the command field
         parent_id = int(config_context.command)
         # get the entry object of the parent
         parent_context = self.menu_handler.entry_contexts_[parent_id]
-        # get the name of the parent item (frame name)
-        name_parent = self.menu_handler.getTitle(parent_id)
         
-        # reset all the selections in the payload sub-menu
-        # check if a item is already checked, if so remove it and set to unchecked to prevent multiple payload selection in the same menu
+        # reset all the selections in the configuration sub-menu
+        # check if a item is already checked, if so remove it and set to unchecked to prevent multiple configuration selection in the same menu
         for item in parent_context.sub_entries:
             # check if the item is checked
             if self.menu_handler.getCheckState(item) == MenuHandler.CHECKED:
@@ -142,7 +141,6 @@ class MenuPayload():
         # update the selected configuration
         self.selected_configuration = int(title.split()[1])  # Extract the configuration number from the title
                 
-        
         # apply changes
         self.menu_handler.reApply(self.server)
         self.server.applyChanges()
@@ -152,7 +150,7 @@ class MenuPayload():
         """
         Callback for reset menu selection to remove all checked items from the menu.
         """
-        # remove all checked items from the array
+        # remove all checked items from the array of payloads selection
         for i, item in enumerate(self.frames_selection):
             if item['checked']:
                 item = {"name": item['name'], "checked": False, "payload": 0.0}
@@ -189,6 +187,9 @@ class MenuPayload():
     def callback_selection(self, feedback):
         """
         Callback for menu selection to change the check state of the selected item(frame).
+
+        Args:
+            feedback: Feedback from the menu selection.
         """
         # get name of the frame
         handle = feedback.menu_entry_id
@@ -212,7 +213,7 @@ class MenuPayload():
 
     def update_item(self, name, check: bool):
         """
-        Update the state of an item(frame) in the array.
+        Update the state of an item(frame) in the array of selected frames with payload.
         
         Args:
             name (str): Name of the item(frame) to update.
@@ -227,7 +228,7 @@ class MenuPayload():
 
     def update_payload(self, name, payload: float):
         """
-        Update the payload mass of an item in the array.
+        Update the payload mass of an item in the array of selected frames with payload.
         
         Args:
             name (str): Name of the item(frame) to update.
@@ -242,7 +243,7 @@ class MenuPayload():
 
     def manage_payload_menu(self, menu_entry_id):
         """
-        Add payload selection items as a sub-menu for the specified menu entry.
+        Add payload selection items as a sub-menu for the specified menu entry (selected frame).
 
         Args:
             menu_entry_id : ID of the menu entry.

@@ -58,15 +58,19 @@ class RobotDescriptionSubscriber(Node):
         # publisher for the joint states
         self.publisher_joint_states = self.create_publisher(JointState, '/joint_states', 10)
         
+        # variable to store the object of the TorqueCalculator
         self.robot = None
 
         # frame where the external force is applied
         self.frame_id = None
-
+        
+        # variable to store external force applied on the robot
         self.external_force = None
 
+        # variable to store checked frames in the menu where a payload is applied
         self.checked_frames = []
 
+        # variable to store masses applied on the frames
         self.masses = None
 
         # variable to store the currente selected configuration from the workspace menu
@@ -85,6 +89,25 @@ class RobotDescriptionSubscriber(Node):
         self.timer_publish_force = self.create_timer(1, self.publish_payload_force)
 
         self.get_logger().info('Robot description subscriber node started')
+
+
+    def robot_description_callback(self, msg):
+        """
+        Callback function for the robot description topic.
+        This function initializes the TorqueCalculator with the robot description received from the topic.
+        """
+
+        self.get_logger().info('Received robot description')
+
+        self.robot = TorqueCalculator(robot_description = msg.data)
+        self.robot.print_active_joint()
+        self.robot.print_frames()
+        
+        # Add the frame to the menu for payload selection
+        for frame in self.robot.get_active_frames():
+            self.menu.insert_frame(frame)
+
+        # self.robot.print_configuration()
 
 
     def publish_payload_force(self):
@@ -137,7 +160,7 @@ class RobotDescriptionSubscriber(Node):
 
     def workspace_calculation(self):
         """
-        Timer to compute the valid workspace area.
+        Callback for timer to compute the valid workspace area.
         """
         # if the user choose to compute the workspace area then compute the valid configurations
         if self.menu.get_workspace_state():
@@ -157,14 +180,14 @@ class RobotDescriptionSubscriber(Node):
             # publish the workspace area
             self.publish_workspace_area(self.valid_configurations)
             
-
-
+            
 
     def publish_selected_configuration(self):
         """
         Timer to publish the selected configuration.
         This will publish the joint states of the selected configuration in the menu.
         """
+        # get the selected configuration from the menu
         self.selected_configuration = self.menu.get_selected_configuration()
         
         # if there is a selected configuration, publish the joint states based on the valid configurations calculated previously
@@ -189,23 +212,6 @@ class RobotDescriptionSubscriber(Node):
 
             self.publisher_joint_states.publish(joint_state)
 
-            
-
-        
-
-    def robot_description_callback(self, msg):
-        self.get_logger().info('Received robot description')
-
-        self.robot = TorqueCalculator(robot_description = msg.data)
-        self.robot.print_active_joint()
-        self.robot.print_frames()
-        
-        # Add the frame to the menu for payload selection
-        for frame in self.robot.get_active_frames():
-            self.menu.insert_frame(frame)
-
-        # self.robot.print_configuration()
-
     
     def update_checked_frames(self):
         """
@@ -223,6 +229,9 @@ class RobotDescriptionSubscriber(Node):
 
 
     def joint_states_callback(self, msg):
+        """
+        Callback function for the joint states topic.
+        """
         if self.robot is not None:
             # if you are not using the calculated configuration from workspace, you can use the joint states to compute the torques because you don't have already the computed torques
             if self.selected_configuration is None:
@@ -241,7 +250,6 @@ class RobotDescriptionSubscriber(Node):
                 else:
                     self.external_force = None
                 
-
                 # compute the inverse dynamics
                 tau = self.robot.compute_inverse_dynamics(q, v, a, extForce=self.external_force)
 
@@ -259,7 +267,6 @@ class RobotDescriptionSubscriber(Node):
 
             else:
                 # if you are using the calculated configuration from workspace, you can use the valid configurations to visualize the torques labels
-                # Publish the torque labels for the selected configuration
 
                 # get the positions of the joints where the torques are applied based on 
                 joints_position, offset_z = self.robot.get_joints_placements(self.valid_configurations[self.selected_configuration]["config"])
@@ -270,11 +277,10 @@ class RobotDescriptionSubscriber(Node):
             
 
 
-
     def publish_label_torques(self, torque: np.ndarray, status_torques : np.ndarray, joints_position: np.ndarray):
         """
         Publish the torque with labels on the robot in RViz.
-
+        
         Args:
             torque (np.ndarray): The torque to be published
             status_torques (np.ndarray): The status of the torques, True if the torque is within the limits, False otherwise
@@ -318,29 +324,12 @@ class RobotDescriptionSubscriber(Node):
         self.publisher_rviz_torque.publish(marker_array)
         
 
-    def clear_workspace_area_markers(self):
-        """
-        Clear the workspace area markers in RViz.
-        This will publish an empty MarkerArray to remove the previous markers.
-        """
-        # create an empty MarkerArray to clear the markers with a DELETEALL action
-        marker_array_msg = MarkerArray()
-        marker = Marker()
-        marker.id = 0
-        marker.action = Marker.DELETEALL
-        marker_array_msg.markers.append(marker)
-
-        # Publish the empty MarkerArray to clear the markers
-        self.publisher_workspace_area.publish(marker_array_msg)
-        self.publisher_workspace_area_names.publish(marker_array_msg)
-
-
     def publish_workspace_area(self, valid_configs: np.ndarray ):
         """
-        Publish the workspace area in RViz using points.
+        Publish the workspace area in RViz using points and labels for the end points.
 
         Args:
-            valid_configs (np.ndarray): Current valid configurations of the robot.
+            valid_configs (np.ndarray): Current valid configurations in the workspace of the robot.
         """
         # Create a MarkerArray to visualize the number of configuration of a specific point in the workspace
         marker_point_names = MarkerArray()
@@ -352,11 +341,16 @@ class RobotDescriptionSubscriber(Node):
         # Iterate through the valid configurations and create markers
         for i, valid_config in enumerate(valid_configs):
             
-            # create the label for the points
+            # create the label for the end point (end effector position) of the valid configuration
             marker_point_name = Marker()
             marker_point_name.header.frame_id = "base_link"
             marker_point_name.header.stamp = self.get_clock().now().to_msg()
-            marker_point_name.ns = "workspace_area"
+
+            if valid_config["arm"] == "left":
+                marker_point_name.ns = "workspace_area_left_arm"
+            else:
+                marker_point_name.ns = "workspace_area_right_arm"
+
             marker_point_name.id = i + 1 
             marker_point_name.type = Marker.TEXT_VIEW_FACING
             marker_point_name.text = f"Config {i}"
@@ -372,16 +366,15 @@ class RobotDescriptionSubscriber(Node):
             marker_point_name.color.r = 1.0  # Red
             marker_point_name.color.g = 1.0  # Green
             marker_point_name.color.b = 1.0  # Blue
-
-            # create the point to visualize the possible end effector position
             
             # get the joint positions for the valid configuration
             joint_positions, offset_z = self.robot.get_joints_placements(valid_config["config"])
 
+            # get the normalized torques for the valid configuration
             norm_joints_torques = self.robot.get_normalized_unified_torques(valid_config["tau"])
             
             for joint_pos,tau in zip(joint_positions,norm_joints_torques):
-                # print only the points for the corrisponding arm, in this way we can visualize the workspace area for each arm separately
+                # print only the points for the corrisponding arm, in this way we can visualize the workspace area for each arm separately and avoid confusion
                 if valid_config["arm"] in joint_pos["name"] : 
                     point = Marker()
                     point.header.frame_id = "base_link"
@@ -408,13 +401,30 @@ class RobotDescriptionSubscriber(Node):
                     # Add the point to the points array
                     marker_points.markers.append(point)
 
-            # Add the marker for the point
+            # Add the marker point name to the marker point names array
             marker_point_names.markers.append(marker_point_name)
 
         # Publish the marker points and names
         self.publisher_workspace_area.publish(marker_points)
         self.publisher_workspace_area_names.publish(marker_point_names)
         
+
+    def clear_workspace_area_markers(self):
+        """
+        Clear the workspace area markers in RViz.
+        This will publish an empty MarkerArray to remove the previous markers.
+        """
+        # create an empty MarkerArray to clear the markers with a DELETEALL action
+        marker_array_msg = MarkerArray()
+        marker = Marker()
+        marker.id = 0
+        marker.action = Marker.DELETEALL
+        marker_array_msg.markers.append(marker)
+
+        # Publish the empty MarkerArray to clear the markers
+        self.publisher_workspace_area.publish(marker_array_msg)
+        self.publisher_workspace_area_names.publish(marker_array_msg)
+
 
 
 
