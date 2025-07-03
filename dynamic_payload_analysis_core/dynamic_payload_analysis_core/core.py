@@ -49,6 +49,10 @@ class TorqueCalculator:
                     temp_urdf_path = temp_file.name
 
             self.geom_model = pin.buildGeomFromUrdf(self.model,temp_urdf_path,pin.GeometryType.COLLISION)
+            
+            # Add collisition pairs
+            self.geom_model.addAllCollisionPairs()
+
             #self.ik_model = chain.Chain.from_urdf_file(temp_urdf_path)
             #self.ik_model = Robot.from_urdf_file(temp_urdf_path, "base_link", "arm_left_7_link")
             os.unlink(temp_urdf_path)
@@ -258,7 +262,7 @@ class TorqueCalculator:
             iMd = self.data.oMi[joint_id].actInv(end_effector_position) # Get the transformation from the current end effector pose to the desired pose
             
             err = pin.log(iMd).vector  # compute the error in the end effector position
-            if norm(err) < eps:
+            if norm(err[:3]) < eps:
                 success = True
                 break
             if i >= IT_MAX:
@@ -266,10 +270,11 @@ class TorqueCalculator:
                 break
 
             J = pin.computeJointJacobian(self.model, self.data, q, joint_id)  # compute the Jacobian of current pose of end effector
-            J = -np.dot(pin.Jlog6(iMd.inverse()), J)
+            #J = -np.dot(pin.Jlog6(iMd.inverse()), J)
+            J = -J[:3, :] 
 
             # compute the inverse kinematics v = -J^T * (J * J^T + damp * I)^-1 * err
-            v = -J.T.dot(solve(J.dot(J.T) + damp * np.eye(6), err))
+            v = -J.T.dot(solve(J.dot(J.T) + damp * np.eye(3), err[:3]))
             
             # Apply joint limits by clamping the resulting configuration
             q_new = pin.integrate(self.model, q, v * DT)
