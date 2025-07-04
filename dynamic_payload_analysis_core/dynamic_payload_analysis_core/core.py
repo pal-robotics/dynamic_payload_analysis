@@ -25,6 +25,8 @@ import tempfile
 from ikpy import chain
 import os
 
+# TODO : If a workspace calculation is already done, store the results in a file to avoid recalculating it and make only the
+# verification of the payload handling in the workspace.
 
 
 
@@ -63,12 +65,44 @@ class TorqueCalculator:
             # create data for IK solver
             #self.ik_model = Robot.from_urdf_file(str(robot_description.resolve()), "base_link", "arm_left_7_link")
         
-        # create data for the robot model
-        self.ik_config = SolverConfig()
         
+        #self.ik_config = SolverConfig()
+        
+        # create data for the robot model
         self.data = self.model.createData()
         self.geom_data = pin.GeometryData(self.geom_model)
 
+        # get the default collisions in the robot model to avoid take them into account in the computations
+        self.default_collisions = self.compute_static_collisions()
+
+        # create array to store all possible configurations for left and right arms
+        self.configurations_l = None
+        self.configurations_r = None
+
+
+    def compute_static_collisions(self):
+        """
+        Compute the static collisions for the robot model.
+        This method is used to compute the collisions in the robot model in the zero configuration.
+        """
+        
+        # array to store the collision pairs
+        collision_pairs = []
+
+        # Compute all the collisions
+        pin.computeCollisions(self.model, self.data, self.geom_model, self.geom_data, self.get_zero_configuration(), False)
+                              
+        # Print the status of collision for all collision pairs
+        for k in range(len(self.geom_model.collisionPairs)):
+            cr = self.geom_data.collisionResults[k]
+            cp = self.geom_model.collisionPairs[k]
+            if cr.isCollision():
+                print(f"Collision between {cp.first} and {cp.second} detected.")
+                collision_pairs.append((cp.first, cp.second, k))
+
+        return collision_pairs
+        
+    
         
 
     def compute_inverse_dynamics(self, q : np.ndarray , qdot : np.ndarray, qddot : np.ndarray, extForce : np.ndarray[pin.Force] = None) -> np.ndarray:
@@ -373,7 +407,7 @@ class TorqueCalculator:
 
             # Check if the torques are within the effort limits
             if self.check_effort_limits(tau,"left").all():
-
+                valid = True
                 # Compute all the collisions
                 pin.computeCollisions(self.model, self.data, self.geom_model, self.geom_data, q["config"], False)
 
@@ -381,16 +415,14 @@ class TorqueCalculator:
                 for k in range(len(self.geom_model.collisionPairs)):
                     cr = self.geom_data.collisionResults[k]
                     cp = self.geom_model.collisionPairs[k]
-                    print(
-                        "collision pair:",
-                        cp.first,
-                        ",",
-                        cp.second,
-                        "- collision:",
-                        "Yes" if cr.isCollision() else "No",
-                    )
+
+                    if cr.isCollision() and (cp.first, cp.second, k) not in self.default_collisions:
+                        print(f"Collision detected between {cp.first} and {cp.second} in the left arm configuration.")
+                        valid = False
+                        break
                 
-                valid_configurations.append({"config" : q["config"], "end_effector_pos" : q["end_effector_pos"], "tau" : tau, "arm" : "left" })
+                if valid:
+                    valid_configurations.append({"config" : q["config"], "end_effector_pos" : q["end_effector_pos"], "tau" : tau, "arm" : "left" })
 
         # check valid configurations for right arm
         for q in configurations_right:
@@ -408,7 +440,7 @@ class TorqueCalculator:
 
             # Check if the torques are within the effort limits
             if self.check_effort_limits(tau,"right").all():
-
+                valid = True
                 # Compute all the collisions
                 pin.computeCollisions(self.model, self.data, self.geom_model, self.geom_data, q["config"], False)
 
@@ -416,17 +448,16 @@ class TorqueCalculator:
                 for k in range(len(self.geom_model.collisionPairs)):
                     cr = self.geom_data.collisionResults[k]
                     cp = self.geom_model.collisionPairs[k]
-                    print(
-                        "collision pair:",
-                        cp.first,
-                        ",",
-                        cp.second,
-                        "- collision:",
-                        "Yes" if cr.isCollision() else "No",
-                    )
+
+                    if cr.isCollision() and (cp.first, cp.second, k) not in self.default_collisions:
+                        print(f"Collision detected between {cp.first} and {cp.second} in the right arm configuration.")
+                        valid = False
+                        break
                 
-                valid_configurations.append({"config" : q["config"], "end_effector_pos" : q["end_effector_pos"], "tau" : tau, "arm" : "right" })
+                if valid:
+                    valid_configurations.append({"config" : q["config"], "end_effector_pos" : q["end_effector_pos"], "tau" : tau, "arm" : "right" })
                 
+
         return np.array(valid_configurations, dtype=object)
         
 
@@ -442,14 +473,15 @@ class TorqueCalculator:
         :param checked_frames (np.ndarray): Array of frame names where the external forces are applied.
         :return: Array of valid configurations that achieve the desired end effector position in format: [{"config", "end_effector_pos, "tau", "arm"}].
         """
-        
-        # Compute all configurations within the specified range for the left arm
-        configurations_l = self.compute_all_configurations(range,resolution, end_effector_name_left)
-        # Compute all configurations within the specified range for the right arm
-        configurations_r = self.compute_all_configurations(range,resolution, end_effector_name_right)
-        
+        # compute all configurations for the left and right arms if they are not already computed
+        if self.configurations_l is None or self.configurations_r is None:
+            # Compute all configurations within the specified range for the left arm
+            self.configurations_l = self.compute_all_configurations(range,resolution, end_effector_name_left)
+            # Compute all configurations within the specified range for the right arm
+            self.configurations_r = self.compute_all_configurations(range,resolution, end_effector_name_right)
+            
         # Verify the configurations to check if they are valid for both arms
-        valid_configurations = self.verify_configurations(configurations_l,configurations_r, masses, checked_frames)
+        valid_configurations = self.verify_configurations(self.configurations_l,self.configurations_r, masses, checked_frames)
         
         return valid_configurations
     
@@ -643,9 +675,10 @@ class TorqueCalculator:
         else:
             # Check if the torques are within the limits
             for i in range(self.model.njoints -1):
-                if arm in self.model.names[i]:
+                # TODO arm is "left" or right" but the model has gripper with left and right in the same name
+                if arm in self.model.names[i+1]:
                     if abs(tau[i]) > self.model.effortLimit[i]:
-                        print(f"\033[91mJoint {i+2} exceeds effort limit: {tau[i]} > {self.model.effortLimit[i]} \033[0m\n")
+                        print(f"\033[91mJoint {i+1} exceeds effort limit: {tau[i]} > {self.model.effortLimit[i]} \033[0m\n")
                         within_limits = np.append(within_limits, False)
                     else:
                         within_limits = np.append(within_limits, True)
