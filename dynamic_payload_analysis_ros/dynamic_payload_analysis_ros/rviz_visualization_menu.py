@@ -164,7 +164,7 @@ class RobotDescriptionSubscriber(Node):
         """
         # if the user choose to compute the workspace area then compute the valid configurations
         if self.menu.get_workspace_state():
-            self.valid_configurations = self.robot.get_valid_workspace(2, 0.3, "gripper_left_finger_joint", "gripper_right_finger_joint", self.masses, self.checked_frames)
+            self.valid_configurations = self.robot.get_valid_workspace(2, 0.05, "gripper_left_finger_joint", "gripper_right_finger_joint", self.masses, self.checked_frames)
             
             # insert the valid configurations in the menu
             self.menu.insert_dropdown_configuration(self.valid_configurations)
@@ -202,15 +202,16 @@ class RobotDescriptionSubscriber(Node):
             self.publisher_joint_states.publish(joint_state)
 
         else:
-            # if there is no selected configuration, publish the joint states with zero positions
-            joint_state = JointState()
-            joint_state.header.stamp = self.get_clock().now().to_msg()
+            if self.robot is not None:
+                # if there is no selected configuration, publish the joint states with zero positions
+                joint_state = JointState()
+                joint_state.header.stamp = self.get_clock().now().to_msg()
 
-            joint_state.name = self.robot.get_joints().tolist()
-            zero_config = self.robot.get_position_for_joint_states(self.robot.get_zero_configuration())
-            joint_state.position = [joint["q"] for joint in zero_config]
+                joint_state.name = self.robot.get_joints().tolist()
+                zero_config = self.robot.get_position_for_joint_states(self.robot.get_zero_configuration())
+                joint_state.position = [joint["q"] for joint in zero_config]
 
-            self.publisher_joint_states.publish(joint_state)
+                self.publisher_joint_states.publish(joint_state)
 
     
     def update_checked_frames(self):
@@ -383,13 +384,13 @@ class RobotDescriptionSubscriber(Node):
                     point.id = cont
                     point.type = Marker.SPHERE
                     point.action = Marker.ADD
-                    point.scale.x = 0.02  # Size of the sphere
-                    point.scale.y = 0.02
-                    point.scale.z = 0.02
+                    point.scale.x = 0.03  # Size of the sphere
+                    point.scale.y = 0.03
+                    point.scale.z = 0.03
                     
-                    point.pose.position.x = joint_pos["x"]
-                    point.pose.position.y = joint_pos["y"]
-                    point.pose.position.z = joint_pos["z"] - offset_z
+                    point.pose.position.x = valid_config["end_effector_pos"][0]
+                    point.pose.position.y = valid_config["end_effector_pos"][1]
+                    point.pose.position.z = valid_config["end_effector_pos"][2] - offset_z
                     point.pose.orientation.w = 1.0
                     point.color.a = 1.0  # Alpha
                     point.color.r = tau  # Red
