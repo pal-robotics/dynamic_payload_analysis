@@ -23,6 +23,8 @@ from dynamic_payload_analysis_core.core import TorqueCalculator
 import numpy as np
 from visualization_msgs.msg import Marker, MarkerArray
 from dynamic_payload_analysis_ros.menu_visual import MenuPayload
+from dynamic_payload_analysis_ros.menu_visual import TorqueVisualizationType
+
 
 
 
@@ -164,7 +166,7 @@ class RobotDescriptionSubscriber(Node):
         """
         # if the user choose to compute the workspace area then compute the valid configurations
         if self.menu.get_workspace_state():
-            self.valid_configurations = self.robot.get_valid_workspace(2, 0.05, "gripper_left_finger_joint", "gripper_right_finger_joint", self.masses, self.checked_frames)
+            self.valid_configurations = self.robot.get_valid_workspace(2, 0.20, "gripper_left_finger_joint", "gripper_right_finger_joint", self.masses, self.checked_frames)
             
             # insert the valid configurations in the menu
             self.menu.insert_dropdown_configuration(self.valid_configurations)
@@ -338,6 +340,8 @@ class RobotDescriptionSubscriber(Node):
         # Create a Marker for the workspace area using points
         marker_points = MarkerArray()
 
+        max_torque_for_joint = self.robot.get_maximum_torques(valid_configs)
+
         cont = 0
         # Iterate through the valid configurations and create markers
         for i, valid_config in enumerate(valid_configs):
@@ -347,11 +351,7 @@ class RobotDescriptionSubscriber(Node):
             marker_point_name.header.frame_id = "base_link"
             marker_point_name.header.stamp = self.get_clock().now().to_msg()
 
-            if valid_config["arm"] == "left":
-                marker_point_name.ns = "workspace_area_left_arm"
-            else:
-                marker_point_name.ns = "workspace_area_right_arm"
-
+            marker_point_name.ns = f"workspace_area_{valid_config['arm']}_arm"
             marker_point_name.id = i + 1 
             marker_point_name.type = Marker.TEXT_VIEW_FACING
             marker_point_name.text = f"Config {i}"
@@ -371,9 +371,14 @@ class RobotDescriptionSubscriber(Node):
             # get the joint positions for the valid configuration
             joint_positions, offset_z = self.robot.get_joints_placements(valid_config["config"])
 
-            # get the normalized torques for the valid configuration
-            norm_joints_torques = self.robot.get_normalized_unified_torques(valid_config["tau"])
+            # get the normalized torques for the valid configuration with current target limits for color visualization
+            if self.menu.get_torque_color() == TorqueVisualizationType.TORQUE_LIMITS:
+                norm_joints_torques = self.robot.get_normalized_torques(valid_config["tau"])
+            else:
+                # if the user selected the max torque, use the maximum torques for the joint
+                norm_joints_torques = self.robot.get_normalized_torques(valid_config["tau"],max_torque_for_joint)
             
+            # insert points related to the end effector position in the workspace area and with color based on the normalized torques for each joint
             for joint_pos,tau in zip(joint_positions,norm_joints_torques):
                 # print only the points for the corrisponding arm, in this way we can visualize the workspace area for each arm separately and avoid confusion
                 if valid_config["arm"] in joint_pos["name"] : 
@@ -401,9 +406,41 @@ class RobotDescriptionSubscriber(Node):
 
                     # Add the point to the points array
                     marker_points.markers.append(point)
-
+            
             # Add the marker point name to the marker point names array
             marker_point_names.markers.append(marker_point_name)
+
+
+        # get the unified torque for the valid configurations
+        unified_configurations_torque = self.robot.get_unified_configurations_torque(valid_configs)
+
+        # insert points related to the end effector position in the workspace area and with color based on the normalized torque for each configuration
+        # this is used to visualize the workspace area with the unified torques for each configuration
+        for i, unified_config in enumerate(unified_configurations_torque):
+            marker_point = Marker()
+            marker_point.header.frame_id = "base_link"
+            marker_point.header.stamp = self.get_clock().now().to_msg()
+            marker_point.ns = f"unified_torque_workspace_{unified_config['arm']}_arm"
+            marker_point.id = i
+            marker_point.type = Marker.SPHERE
+            marker_point.action = Marker.ADD
+            marker_point.scale.x = 0.03  # Size of the sphere
+            marker_point.scale.y = 0.03
+            marker_point.scale.z = 0.03
+            marker_point.pose.position.x = unified_config["end_effector_pos"][0]
+            marker_point.pose.position.y = unified_config["end_effector_pos"][1]
+            marker_point.pose.position.z = unified_config["end_effector_pos"][2] - offset_z # Offset to avoid overlap with the sphere
+            marker_point.pose.orientation.w = 1.0
+            marker_point.color.a = 1.0  # Alpha
+
+            # Color based on the normalized torques
+            marker_point.color.r = unified_config["norm_tau"]
+            marker_point.color.g = 1 - unified_config["norm_tau"]
+            marker_point.color.b = 0.0  # Blue
+
+            # Add the marker point to the points array
+            marker_points.markers.append(marker_point)
+
 
         # Publish the marker points and names
         self.publisher_workspace_area.publish(marker_points)

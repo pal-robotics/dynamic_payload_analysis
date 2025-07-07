@@ -531,7 +531,30 @@ class TorqueCalculator:
         return J_frame
     
 
-    def get_normalized_unified_torques(self, tau : np.ndarray) -> np.ndarray:
+    def get_maximum_torques(self, valid_configs : np.ndarray) -> np.ndarray:
+        """
+        Get the maximum torques for each joint in all valid configurations.
+        
+        :param valid_configs: Array of valid configurations with related torques in format: [{"config", "end_effector_pos, "tau"}].
+        :return: Array of maximum torques for each joint in the current valid configurations.
+        """
+        max_torques = []
+        
+        # Get the number of joints
+        num_joints = len(valid_configs[0]["tau"])
+        max_torques = np.array([], dtype=float)
+
+        # Find maximum absolute torque for each joint
+        for i in range(num_joints):
+            joint_torques = [abs(config["tau"][i]) for config in valid_configs]
+            max_torques = np.append( max_torques, max(joint_torques))
+
+        return max_torques
+
+            
+        
+
+    def get_normalized_torques(self, tau : np.ndarray, target_torque : np.ndarray = None) -> np.ndarray:
         """
         Normalize the torques vector to a unified scale.
         
@@ -543,11 +566,59 @@ class TorqueCalculator:
         
         norm_tau = []
 
-        # Normalize the torques vector
-        for i, torque in enumerate(tau):
-            norm_tau.append(abs(torque) / self.model.effortLimit[i])
-            
+        # if target_torque is not specified, normalize the torques vector to the effort limits of the robot model
+        if target_torque is None:
+            # Normalize the torques vector
+            for i, torque in enumerate(tau):
+                norm_tau.append(abs(torque) / self.model.effortLimit[i])
+        else:
+            # Normalize the torques vector to the target torque
+            for i, torque in enumerate(tau):
+                norm_tau.append(abs(torque) / target_torque[i])
+
+
         return norm_tau
+    
+
+    def get_unified_configurations_torque(self, valid_configs : np.ndarray) -> np.ndarray | np.ndarray:
+        """
+        Get a unified sum of torques for all possible configurations of the robot model.
+        
+        :param q: Joint configuration vector. 
+        :param valid_configs: Array of 
+        """
+        torques_sum = np.array([], dtype=float)
+        norm_torques = np.array([], dtype=float)
+        sum = 0.0
+
+        for valid_config in valid_configs:
+            # get the joint configuration and torques vector from the valid configuration
+            q = valid_config["config"]
+            tau = valid_config["tau"]
+            
+            # calculate the sum of torques for each joint configuration
+            for joint, torque in zip(q, tau):
+                #if abs(torque) < 50:
+                sum += abs(torque)
+                
+            torques_sum = np.append(torques_sum, {"sum" : sum, "end_effector_pos" : valid_config["end_effector_pos"], "arm" : valid_config["arm"]})
+            sum = 0.0  # reset the sum for the next configuration
+
+        # get the maximum torque from the sum of torques for both arms
+        max_torque_l = max([item["sum"] for item in torques_sum if item["arm"] == "left"])
+        max_torque_r = max([item["sum"] for item in torques_sum if item["arm"] == "right"])
+
+        # Normalize the torques vector to a unified scale
+        for tau in torques_sum:
+            if tau["arm"] == "left":
+                norm_tau = tau["sum"] / max_torque_l
+            else:
+                norm_tau = tau["sum"] / max_torque_r
+
+            # append the normalized torque to the array
+            norm_torques = np.append(norm_torques, {"norm_tau" : norm_tau, "end_effector_pos" : tau["end_effector_pos"], "arm" : tau["arm"]})
+
+        return norm_torques
     
 
     def check_zero(self, vec : np.ndarray) -> bool:

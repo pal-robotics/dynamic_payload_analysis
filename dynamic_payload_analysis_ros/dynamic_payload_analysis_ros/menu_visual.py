@@ -23,7 +23,12 @@ import rclpy
 from visualization_msgs.msg import InteractiveMarker
 from visualization_msgs.msg import InteractiveMarkerControl
 from visualization_msgs.msg import Marker
+from enum import Enum
 
+# enumeration to define the type of torque color visualization
+class TorqueVisualizationType(Enum):
+    TORQUE_LIMITS = 1
+    MAX_CURRENT_TORQUE = 2
 
 class MenuPayload():
     def __init__(self, node):
@@ -48,12 +53,23 @@ class MenuPayload():
         # payload mass selection array
         self.payload_selection = np.array([0.1, 0.2, 0.3, 0.4, 0.5, 1, 1.5, 1.8, 2.0, 2.5, 3.0, 3.5], dtype=float)
 
+        # variable to store selection between torque limits or max torque in the current configuration for color visualization
+        self.torque_color = TorqueVisualizationType.TORQUE_LIMITS # default is torque limits
+
         # insert the root menu items
         self.root_frames = self.menu_handler.insert('Select where to apply payload')
         self.workspace_button = self.menu_handler.insert('Compute workspace', callback=self.callback_workspace)
         # insert the reset payload button 
         self.reset = self.menu_handler.insert('Reset payloads', parent=self.root_frames, callback=self.callback_reset)
         
+        # insert the checker for visualization color choice between torque limits or max torque in the current configuration
+        self.torque_limits_checker = self.menu_handler.insert('Torque limits',command=str(TorqueVisualizationType.TORQUE_LIMITS.value) , callback=self.callback_color_selection)
+        self.max_torque_checker = self.menu_handler.insert('Max torque', command=str(TorqueVisualizationType.MAX_CURRENT_TORQUE.value) , callback=self.callback_color_selection)
+
+        self.menu_handler.setVisible(self.torque_limits_checker, False)
+        self.menu_handler.setVisible(self.max_torque_checker, False)
+        
+
         self.make_menu_marker('menu_frames')
         # add server to menu and apply changes
         self.menu_handler.apply(self.server, 'menu_frames')
@@ -78,6 +94,37 @@ class MenuPayload():
         self.menu_handler.reApply(self.server)
         self.server.applyChanges()
     
+    def callback_color_selection(self, feedback):
+        """
+        Callback for torque selection type to change the visualization color in Rviz.
+        
+        Args:
+            feedback: Feedback from the menu selection.
+        """
+        # get the handle of the selected item (id)
+        handle = feedback.menu_entry_id
+        # get the title of the selected item
+        title = self.menu_handler.getTitle(handle)
+        # get the entry object from the menu handler with all the informations about the item
+        color_context = self.menu_handler.entry_contexts_[handle]
+
+        # get the command field, in this case it is used to store if the selected item is a torque limits or max torque
+        self.torque_color = TorqueVisualizationType.TORQUE_LIMITS if color_context.command == str(TorqueVisualizationType.TORQUE_LIMITS.value) else TorqueVisualizationType.MAX_CURRENT_TORQUE
+
+        if self.torque_color == TorqueVisualizationType.TORQUE_LIMITS:
+            # set the torque limits checker as checked and max torque checker as unchecked
+            self.menu_handler.setCheckState(self.torque_limits_checker, MenuHandler.CHECKED)
+            self.menu_handler.setCheckState(self.max_torque_checker, MenuHandler.UNCHECKED)
+        elif self.torque_color == TorqueVisualizationType.MAX_CURRENT_TORQUE:
+            # set the max torque checker as checked and torque limits checker as unchecked
+            self.menu_handler.setCheckState(self.max_torque_checker, MenuHandler.CHECKED)
+            self.menu_handler.setCheckState(self.torque_limits_checker, MenuHandler.UNCHECKED)
+        
+        
+        # apply changes
+        self.menu_handler.reApply(self.server)
+        self.server.applyChanges()
+
 
     def callback_workspace(self, feedback):
         """
@@ -100,6 +147,12 @@ class MenuPayload():
             last_entry = self.menu_handler.insert(f"Configuration {i} | arm: " + item["arm"], parent=self.workspace_button, command=str(self.workspace_button), callback=self.callback_configuration_selection)
             self.menu_handler.setCheckState(last_entry, MenuHandler.UNCHECKED)
             self.menu_handler.setVisible(last_entry, True)
+        
+        # set visible true for color selection and put the default check state
+        self.menu_handler.setVisible(self.torque_limits_checker, True)
+        self.menu_handler.setVisible(self.max_torque_checker, True)
+        self.menu_handler.setCheckState(self.torque_limits_checker, MenuHandler.CHECKED)
+        self.menu_handler.setCheckState(self.max_torque_checker, MenuHandler.UNCHECKED)
 
         self.menu_handler.reApply(self.server)
         self.server.applyChanges()
@@ -179,6 +232,12 @@ class MenuPayload():
         # reset the selected configuration
         self.selected_configuration = None
 
+        # hide the torque limits and max torque checkboxes when there is no configuration selected
+        self.menu_handler.setVisible(self.torque_limits_checker, False)
+        self.menu_handler.setVisible(self.max_torque_checker, False)
+
+        self.torque_color = TorqueVisualizationType.TORQUE_LIMITS  # reset to default torque limits
+
         # reapply the menu handler and server changes
         self.menu_handler.reApply(self.server)
         self.server.applyChanges()
@@ -209,6 +268,8 @@ class MenuPayload():
 
         # print the current state of the checked frames
         print(f"{self.get_item_state()} \n")
+
+        
     
 
     def update_item(self, name, check: bool):
@@ -298,6 +359,16 @@ class MenuPayload():
         # apply changes
         self.menu_handler.reApply(self.server)
         self.server.applyChanges()
+
+
+    def get_torque_color(self) -> TorqueVisualizationType:
+        """
+        Return the type of torque color visualization selected.
+        
+        Returns:
+            TorqueVisualizationType: The type of torque color visualization.
+        """
+        return self.torque_color
 
 
     def get_selected_configuration(self) -> str:
