@@ -531,25 +531,28 @@ class TorqueCalculator:
         return J_frame
     
 
-    def get_maximum_torques(self, valid_configs : np.ndarray) -> np.ndarray:
+    def get_maximum_torques(self, valid_configs : np.ndarray) -> np.ndarray | np.ndarray:
         """
         Get the maximum torques for each joint in all valid configurations.
         
         :param valid_configs: Array of valid configurations with related torques in format: [{"config", "end_effector_pos, "tau"}].
-        :return: Array of maximum torques for each joint in the current valid configurations.
+        :return: Arrays of maximum torques for each joint in the current valid configurations for left and right arm.
         """
-        max_torques = []
         
         # Get the number of joints
         num_joints = len(valid_configs[0]["tau"])
-        max_torques = np.array([], dtype=float)
+        max_torques_left = np.array([], dtype=float)
+        max_torques_right = np.array([], dtype=float)
 
         # Find maximum absolute torque for each joint
         for i in range(num_joints):
-            joint_torques = [abs(config["tau"][i]) for config in valid_configs]
-            max_torques = np.append( max_torques, max(joint_torques))
+            joint_torques_left = [abs(config["tau"][i]) for config in valid_configs if config["arm"] == "left"]
+            joint_torques_right = [abs(config["tau"][i]) for config in valid_configs if config["arm"] == "right"]
+            
+            max_torques_left = np.append( max_torques_left, max(joint_torques_left))
+            max_torques_right = np.append( max_torques_right, max(joint_torques_right))
 
-        return max_torques
+        return max_torques_left, max_torques_right
 
             
         
@@ -574,7 +577,10 @@ class TorqueCalculator:
         else:
             # Normalize the torques vector to the target torque
             for i, torque in enumerate(tau):
-                norm_tau.append(abs(torque) / target_torque[i])
+                if target_torque[i] != 0:
+                    norm_tau.append(abs(torque) / target_torque[i])
+                else:
+                    norm_tau.append(0.0)
 
 
         return norm_tau

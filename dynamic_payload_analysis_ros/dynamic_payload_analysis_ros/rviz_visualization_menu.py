@@ -340,7 +340,9 @@ class RobotDescriptionSubscriber(Node):
         # Create a Marker for the workspace area using points
         marker_points = MarkerArray()
 
-        max_torque_for_joint = self.robot.get_maximum_torques(valid_configs)
+        # calculate the maximum torques for each joint in the current valid configurations for each arm only if the user selected the max current torque visualization
+        if self.menu.get_torque_color() == TorqueVisualizationType.MAX_CURRENT_TORQUE:
+            max_torque_for_joint_left, max_torque_for_joint_right = self.robot.get_maximum_torques(valid_configs)
 
         cont = 0
         # Iterate through the valid configurations and create markers
@@ -376,7 +378,10 @@ class RobotDescriptionSubscriber(Node):
                 norm_joints_torques = self.robot.get_normalized_torques(valid_config["tau"])
             else:
                 # if the user selected the max torque, use the maximum torques for the joint
-                norm_joints_torques = self.robot.get_normalized_torques(valid_config["tau"],max_torque_for_joint)
+                if valid_config["arm"] == "left":
+                    norm_joints_torques = self.robot.get_normalized_torques(valid_config["tau"],max_torque_for_joint_left)
+                else:
+                    norm_joints_torques = self.robot.get_normalized_torques(valid_config["tau"],max_torque_for_joint_right)
             
             # insert points related to the end effector position in the workspace area and with color based on the normalized torques for each joint
             for joint_pos,tau in zip(joint_positions,norm_joints_torques):
