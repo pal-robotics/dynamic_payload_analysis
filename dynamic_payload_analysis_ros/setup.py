@@ -13,10 +13,10 @@ setup(
     ],
     install_requires=['setuptools'],
     zip_safe=True,
-    maintainer='morolinux',
+    maintainer='Enrico Moro',
     maintainer_email='enrimoro003@gmail.com',
-    description='This package provides tools for dynamic payload analysis in robotics with a focus on torque calculations and external force handling.',
-    license='TODO: License declaration',
+    description='This package provides graphics tools in Rviz for dynamic payload analysis in robotics with a focus on torque calculations and external force handling.',
+    license='Apache License 2.0',
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [

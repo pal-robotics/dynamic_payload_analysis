@@ -63,9 +63,6 @@ class RobotDescriptionSubscriber(Node):
         # variable to store the object of the TorqueCalculator
         self.robot = None
 
-        # frame where the external force is applied
-        self.frame_id = None
-        
         # variable to store external force applied on the robot
         self.external_force = None
 

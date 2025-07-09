@@ -13,10 +13,10 @@ setup(
     ],
     install_requires=['setuptools'],
     zip_safe=True,
-    maintainer='morolinux',
+    maintainer='Enrico Moro',
     maintainer_email='enrimoro003@gmail.com',
-    description='TODO: Package description',
-    license='TODO: License declaration',
+    description='This package implements core functionalities for dynamic payload analysis in robotics, focusing on torque calculations and external force handling.',
+    license='Apache License 2.0',
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
