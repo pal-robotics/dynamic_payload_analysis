@@ -1,10 +1,34 @@
-# Library to handle calculations for inverse and forward dynamics
+
+# Copyright (c) 2025 PAL Robotics S.L. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 
 import pinocchio as pin
 import numpy as np
 import math
 from typing import Union
 from pathlib import Path
+from numpy.linalg import norm, solve
+from optik import Robot, SolverConfig
+import tempfile
+from ikpy import chain
+import os
+
+# TODO : If a workspace calculation is already done, store the results in a file to avoid recalculating it and make only the
+# verification of the payload handling in the workspace.
+
+
 
 class TorqueCalculator:
     def __init__(self, robot_description : Union[str, Path]):
@@ -18,10 +42,59 @@ class TorqueCalculator:
         # Load the robot model from path or XML string
         if isinstance(robot_description, str):
             self.model = pin.buildModelFromXML(robot_description)
+            
+            # TODO change parser in general for more unique solution
+            
+            # create temporary URDF file from the robot description string
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.urdf', delete=False) as temp_file:
+                    temp_file.write(robot_description)
+                    temp_urdf_path = temp_file.name
+
+            self.geom_model = pin.buildGeomFromUrdf(self.model,temp_urdf_path,pin.GeometryType.COLLISION)
+            
+            # Add collisition pairs
+            self.geom_model.addAllCollisionPairs()
+
+            os.unlink(temp_urdf_path)
+
         elif isinstance(robot_description, Path):
             self.model = pin.buildModelFromUrdf(str(robot_description.resolve()))
         
+        # create data for the robot model
         self.data = self.model.createData()
+        self.geom_data = pin.GeometryData(self.geom_model)
+
+        # get the default collisions in the robot model to avoid take them into account in the computations
+        self.default_collisions = self.compute_static_collisions()
+
+        # create array to store all possible configurations for left and right arms
+        self.configurations_l = None
+        self.configurations_r = None
+
+
+    def compute_static_collisions(self):
+        """
+        Compute the static collisions for the robot model.
+        This method is used to compute the collisions in the robot model in the zero configuration.
+        """
+        
+        # array to store the collision pairs
+        collision_pairs = []
+
+        # Compute all the collisions
+        pin.computeCollisions(self.model, self.data, self.geom_model, self.geom_data, self.get_zero_configuration(), False)
+                              
+        # Print the status of collision for all collision pairs
+        for k in range(len(self.geom_model.collisionPairs)):
+            cr = self.geom_data.collisionResults[k]
+            cp = self.geom_model.collisionPairs[k]
+            if cr.isCollision():
+                print(f"Collision between {cp.first} and {cp.second} detected.")
+                collision_pairs.append((cp.first, cp.second, k))
+
+        return collision_pairs
+        
+    
         
 
     def compute_inverse_dynamics(self, q : np.ndarray , qdot : np.ndarray, qddot : np.ndarray, extForce : np.ndarray[pin.Force] = None) -> np.ndarray:
@@ -30,7 +103,8 @@ class TorqueCalculator:
         
         :param q: Joint configuration vector.
         :param qdot: Joint velocity vector.
-        :param a: Joint acceleration vector.
+        :param qddot: Joint acceleration vector.
+        :param extForce: External forces vector applied to the robot model.
         :return: Torques vector
         """
 
@@ -47,17 +121,19 @@ class TorqueCalculator:
         return tau
     
 
-    def create_ext_force(self, mass : float, frame_name : str, q : np.ndarray) -> np.ndarray[pin.Force]:
+    def create_ext_force(self, masses : Union[float, np.ndarray] , frame_name : Union[str | np.ndarray], q : np.ndarray) -> np.ndarray[pin.Force]:
         """
-        Create external forces vector based on the mass and frame ID.
+        Create external forces vector based on the masses and frame ID.
         The resulting vector will contain the force applied to the specified frame and with the local orientation of the parent joint.
         
-        :param mass: Mass of the object to apply the force to.
-        :param frame_id: Frame ID where the force is applied.
+        :param masses (float, np.ndarray) : Mass of the object to apply the force to or vector with masses related to frames names.
+        :param frame_name(str , np.ndarray) : Frame name where the force is applied or vector of frame names where the forces is applied.
+        :param q: Joint configuration vector.
         :return: External force vector.
         """
-        if mass < 0:
-            raise ValueError("Mass must be a positive value")
+        if isinstance(masses, float):
+            if masses < 0:
+                raise ValueError("Mass must be a positive value")
         
         if frame_name is None:
             raise ValueError("Frame name must be provided")
@@ -70,24 +146,38 @@ class TorqueCalculator:
         # Initialize external forces array
         fext = [pin.Force(np.zeros(6)) for _ in range(self.model.njoints)]
         
-        self.update_configuration(q) 
+        self.update_configuration(q)
 
-        # Get the frame ID and joint ID from the frame name
-        frame_id = self.model.getFrameId(frame_name)
-        joint_id = self.model.frames[frame_id].parentJoint
+        # Check if frame_name is a single string or an array of strings
+        if isinstance(frame_name, str):
+             # Get the frame ID and joint ID from the frame name
+            frame_id = self.model.getFrameId(frame_name)
+            joint_id = self.model.frames[frame_id].parentJoint
 
-        # force expressed in the world frame (gravity force in z axis)
-        ext_force_world = pin.Force(np.array([0.0, 0.0, mass * -9.81]), np.array([0.0, 0.0, 0.0])) 
+            # force expressed in the world frame (gravity force in z axis)
+            ext_force_world = pin.Force(np.array([0.0, 0.0, masses * -9.81]), np.array([0.0, 0.0, 0.0])) 
 
-        # placement of the frame in the world frame
-        frame_placement = self.data.oMf[frame_id]
-        #print(f"Frame placement: {frame_placement}")
-        
-        # Convert the external force expressed in the world frame to the orientation of the joint frame where the force is applied
-        fext[joint_id] = self.data.oMi[joint_id].actInv(ext_force_world)
-        # Zero out the last 3 components (torques) of the force to ensure only the force in z axis (gravity force) is applied
-        fext[joint_id].angular = np.zeros(3) # TODO : make it more efficient 
-        
+            # placement of the frame in the world frame
+            #frame_placement = self.data.oMf[frame_id]
+            #print(f"Frame placement: {frame_placement}")
+            
+            # Convert the external force expressed in the world frame to the orientation of the joint frame where the force is applied
+            fext[joint_id] = self.data.oMi[joint_id].actInv(ext_force_world)
+            # Zero out the last 3 components (torques) of the force to ensure only the force in z axis (gravity force) is applied
+            fext[joint_id].angular = np.zeros(3) # TODO : make it more efficient 
+
+        else:
+            for mass, frame in zip(masses,frame_name):
+                frame_id = self.model.getFrameId(frame)
+                joint_id = self.model.frames[frame_id].parentJoint
+
+                # force expressed in the world frame (gravity force in z axis)
+                ext_force_world = pin.Force(np.array([0.0, 0.0, mass * -9.81]), np.array([0.0, 0.0, 0.0]))
+                # Convert the external force expressed in the world frame to the orientation of the joint frame where the force is applied
+                fext[joint_id] = self.data.oMi[joint_id].actInv(ext_force_world)
+                # Zero out the last 3 components (torques) of the force to ensure only the force in z axis (gravity force) is applied
+                fext[joint_id].angular = np.zeros(3)
+
         return fext
 
 
@@ -101,74 +191,6 @@ class TorqueCalculator:
         pin.updateFramePlacements(self.model, self.data)
 
 
-    def get_mass_matrix(self, q : np.ndarray) -> np.ndarray:
-        """
-        Compute the mass matrix for the robot model.
-        
-        :param q: Joint configuration vector.
-        :return: Mass matrix.
-        """
-        
-        mass_matrix = pin.crba(self.model, self.data, q)
-        if mass_matrix is None:
-            raise ValueError("Failed to compute mass matrix")
-        
-        return mass_matrix
-    
-    def get_joints(self) -> np.ndarray:
-        """
-        Get the array joint names of the robot model.
-        
-        :return: array Joint names .
-        """
-        
-        return np.array(self.model.names[1:], dtype=str)
-    
-    def get_frames(self) -> np.ndarray:
-        """
-        Get the array of frame names in the robot model.
-        
-        :return: array of frame names.
-        """
-        
-        return np.array([frame.name for frame in self.model.frames if frame.type == pin.FrameType.BODY], dtype=str)
-    
-    def get_active_frames(self) -> np.ndarray:
-        """
-        Get the array of active joint names in the robot model.
-        
-        :return: array of active joint names.
-        """
-        # Get frames where joints are parents
-        frame_names = []
-        for i in range(1, self.model.njoints):
-            for frame in self.model.frames:
-                if frame.parentJoint == i and frame.type == pin.FrameType.BODY:
-                    frame_names.append(frame.name)
-                    break
-        
-        return np.array(frame_names, dtype=str)
-    
-    def get_parent_joint_id(self, frame_name : str) -> int:
-        """
-        Get the parent joint ID for a given frame name.
-        
-        :param frame_name: Name of the frame.
-        :return: Joint ID.
-        """
-        
-        if frame_name is None:
-            raise ValueError("Frame name must be provided")
-        
-        # Get the frame ID from the model
-        frame_id = self.model.getFrameId(frame_name)
-        joint_id = self.model.frames[frame_id].parentJoint
-        
-        if joint_id == -1:
-            raise ValueError(f"Joint '{joint_id}' not found in the robot model")
-        
-        return joint_id
-
     def compute_maximum_payload(self, q : np.ndarray, qdot : np.ndarray, tau : np.ndarray, frame_name : str) -> float:
         """
         Compute the forward dynamics acceleration vector.
@@ -179,6 +201,7 @@ class TorqueCalculator:
         :param frame_name: Name of the frame where the force is applied.
         :return: Acceleration vector.
         """
+        # TODO : refactor this method
         
         # Update the configuration of the robot model
         self.update_configuration(q)
@@ -207,6 +230,255 @@ class TorqueCalculator:
         return F_max[2] # get the force in z axis of the world frame, which is the maximum force payload
     
 
+
+    def compute_inverse_kinematics_optik(self, q : np.ndarray, end_effector_position: np.ndarray) -> np.ndarray:
+        """
+        Compute the inverse kinematics for the robot model using the Optik library.
+        
+        :param q: current joint configuration vector.
+        :param end_effector_position: Position of the end effector in the world frame [rotation matrix , translation vector].
+        :return: Joint configuration vector that achieves the desired end effector position.
+        """
+        # TODO : It doees not work with the current version of the library
+        
+        # Compute the inverse kinematics
+        sol = self.ik_model.ik(self.ik_config, end_effector_position, q)
+        
+        return sol
+    
+
+
+    def compute_inverse_kinematics_ikpy(self, q : np.ndarray, end_effector_position: np.ndarray) -> np.ndarray:
+        """
+        Compute the inverse kinematics for the robot model using the ikpy library.
+        
+        :param q: current joint configuration vector.
+        :param end_effector_position: Position of the end effector in the world frame [rotation matrix , translation vector].
+        :return: Joint configuration vector that achieves the desired end effector position.
+        """
+        # TODO : It doees not work with the current version of the library
+        
+        # Compute the inverse kinematics
+        sol = self.ik_model.inverse_kinematics(end_effector_position)
+        
+        return sol
+
+
+
+    def compute_inverse_kinematics(self, q : np.ndarray, end_effector_position: np.ndarray, end_effector_name : str) -> np.ndarray:
+        """
+        Compute the inverse kinematics for the robot model with joint limits consideration.
+        :param q: current joint configuration vector.
+        :param end_effector_position: Position of the end effector in the world frame [rotation matrix , translation vector].
+        :param end_effector_name: Name of the end effector joint.
+        :return: Joint configuration vector that achieves the desired end effector position.
+        """
+
+        joint_id = self.model.getJointId(end_effector_name)  # Get the joint ID of the end effector
+
+        # Set parameters for the inverse kinematics solver
+        eps = 1e-3 # reduce for more precision
+        IT_MAX = 500 # Maximum number of iterations
+        DT = 1e-1 
+        damp = 1e-12
+
+        i = 0
+        while True:
+            self.update_configuration(q)
+            iMd = self.data.oMi[joint_id].actInv(end_effector_position) # Get the transformation from the current end effector pose to the desired pose
+            
+            err = pin.log(iMd).vector  # compute the error in the end effector position
+            if norm(err[:3]) < eps:
+                success = True
+                break
+            if i >= IT_MAX:
+                success = False
+                break
+
+            J = pin.computeJointJacobian(self.model, self.data, q, joint_id)  # compute the Jacobian of current pose of end effector
+            #J = -np.dot(pin.Jlog6(iMd.inverse()), J)
+            J = -J[:3, :] 
+
+            # compute the inverse kinematics v = -J^T * (J * J^T + damp * I)^-1 * err
+            v = -J.T.dot(solve(J.dot(J.T) + damp * np.eye(3), err[:3]))
+            
+            # Apply joint limits by clamping the resulting configuration
+            q_new = pin.integrate(self.model, q, v * DT)
+            # Ensure the new configuration is within joint limits
+            q_new = np.clip(q_new, self.model.lowerPositionLimit, self.model.upperPositionLimit)
+            
+            # Check if we're hitting joint limits and reduce step size if needed
+            if np.allclose(q_new, q, atol=1e-6):
+                DT *= 0.5  # Reduce step size if no progress due to joint limits
+                if DT < 1e-6:  # Minimum step size threshold
+                    success = False
+                    break
+            
+            q = q_new
+
+            # if not i % 10:
+            #     print(f"{i}: error = {err.T}")
+            i += 1
+        
+        if success:
+            print(f"Convergence achieved! in {i} iterations")
+            return q
+        else:
+            print(
+                "\n"
+                "Warning: the iterative algorithm has not reached convergence to the desired precision"
+            )
+            return None  # Return None if convergence is not achieved
+        
+            
+
+    def compute_all_configurations(self, range : int, resolution : int, end_effector_name : str) -> np.ndarray:
+        """
+        Compute all configurations for the robot model within a specified range.
+        
+        :param range (int): Range as side of a square where in the center there is the actual position of end effector.
+        :param resolution (int): Resolution of the grid to compute configurations.
+        :param end_effector_name (str): Name of the end effector joint.
+        :return : Array of joint configurations that achieve the desired end effector position.
+        """
+        
+        if range <= 0:
+            raise ValueError("Range must be a positive value")
+        
+        # Get the current joint configuration
+        q = self.get_zero_configuration()
+
+        #id_end_effector = self.model.getJointId(end_effector_name)
+        # Get the current position of the end effector
+        #end_effector_pos = self.data.oMi[id_end_effector]
+        
+        # Create an array to store all configurations
+        configurations = []
+        
+        # Iterate over the range to compute all configurations
+        for x in np.arange(-range/2, range/2 , resolution):
+            for y in np.arange(-range/2, range/2 , resolution):
+                for z in np.arange(0, range , resolution):
+                    target_position = pin.SE3(np.eye(3), np.array([x, y, z]))
+                    new_q = self.compute_inverse_kinematics(q, target_position, end_effector_name)
+                     
+                    if new_q is not None:
+                        q = new_q
+                        # store the valid configuration and the position of the end effector relative to that configuration
+                        configurations.append({"config" : new_q, "end_effector_pos": target_position.translation}) 
+        
+        return np.array(configurations, dtype=object)
+    
+
+
+    def verify_configurations(self, configurations_left : np.ndarray, configurations_right : np.ndarray, masses : np.ndarray, checked_frames : np.ndarray) -> np.ndarray:
+        """
+        Verify the configurations to check if they are valid.
+        
+        :param configurations_left: Array of joint configurations to verify for the left arm.
+        :param configurations_right: Array of joint configurations to verify for the right arm.
+        :param ext_forces: Array of external forces to apply to the robot model.
+        :return: Array of valid configurations with related torques in format: [{"config", "end_effector_pos, "tau"}].
+        """
+        
+        valid_configurations = []
+        
+        # check valid configurations for left arm
+        for q in configurations_left:
+            # Update the configuration of the robot model
+            self.update_configuration(q["config"])
+            
+            if masses is not None and checked_frames is not None:
+                # Create external forces based on the masses and checked frames
+                ext_forces = self.create_ext_force(masses, checked_frames, q["config"])
+                # Compute the inverse dynamics for the current configuration
+                tau = self.compute_inverse_dynamics(q["config"], self.get_zero_velocity(), self.get_zero_acceleration(),extForce=ext_forces)
+            else:
+                # Compute the inverse dynamics for the current configuration without external forces
+                tau = self.compute_inverse_dynamics(q["config"], self.get_zero_velocity(), self.get_zero_acceleration())
+
+            # Check if the torques are within the effort limits
+            if self.check_effort_limits(tau,"left").all():
+                valid = True
+                # Compute all the collisions
+                pin.computeCollisions(self.model, self.data, self.geom_model, self.geom_data, q["config"], False)
+
+                # Print the status of collision for all collision pairs
+                for k in range(len(self.geom_model.collisionPairs)):
+                    cr = self.geom_data.collisionResults[k]
+                    cp = self.geom_model.collisionPairs[k]
+
+                    if cr.isCollision() and (cp.first, cp.second, k) not in self.default_collisions:
+                        print(f"Collision detected between {cp.first} and {cp.second} in the left arm configuration.")
+                        valid = False
+                        break
+                
+                if valid:
+                    valid_configurations.append({"config" : q["config"], "end_effector_pos" : q["end_effector_pos"], "tau" : tau, "arm" : "left" })
+
+        # check valid configurations for right arm
+        for q in configurations_right:
+            # Update the configuration of the robot model
+            self.update_configuration(q["config"])
+            
+            if masses is not None and checked_frames is not None:
+                # Create external forces based on the masses and checked frames
+                ext_forces = self.create_ext_force(masses, checked_frames, q["config"])
+                # Compute the inverse dynamics for the current configuration
+                tau = self.compute_inverse_dynamics(q["config"], self.get_zero_velocity(), self.get_zero_acceleration(),extForce=ext_forces)
+            else:
+                # Compute the inverse dynamics for the current configuration without external forces
+                tau = self.compute_inverse_dynamics(q["config"], self.get_zero_velocity(), self.get_zero_acceleration())
+
+            # Check if the torques are within the effort limits
+            if self.check_effort_limits(tau,"right").all():
+                valid = True
+                # Compute all the collisions
+                pin.computeCollisions(self.model, self.data, self.geom_model, self.geom_data, q["config"], False)
+
+                # Print the status of collision for all collision pairs
+                for k in range(len(self.geom_model.collisionPairs)):
+                    cr = self.geom_data.collisionResults[k]
+                    cp = self.geom_model.collisionPairs[k]
+
+                    if cr.isCollision() and (cp.first, cp.second, k) not in self.default_collisions:
+                        print(f"Collision detected between {cp.first} and {cp.second} in the right arm configuration.")
+                        valid = False
+                        break
+                
+                if valid:
+                    valid_configurations.append({"config" : q["config"], "end_effector_pos" : q["end_effector_pos"], "tau" : tau, "arm" : "right" })
+                
+
+        return np.array(valid_configurations, dtype=object)
+        
+
+    def get_valid_workspace(self, range : int, resolution : int, end_effector_name_left : str, end_effector_name_right, masses : np.ndarray, checked_frames: np.ndarray) -> np.ndarray:
+        """
+        Get the valid workspace of the robot model by computing all configurations within a specified range.
+        
+        :param range (int): Range as side of a square where in the center there is the actual position of end effector.
+        :param resolution (int): Resolution of the grid to compute configurations.
+        :param end_effector_name_left (str): Name of the end effector joint to test for the left arm.
+        :param end_effector_name_right (str): Name of the end effector joint to test for the right arm.
+        :param masses (np.ndarray): Array of masses to apply to the robot model.
+        :param checked_frames (np.ndarray): Array of frame names where the external forces are applied.
+        :return: Array of valid configurations that achieve the desired end effector position in format: [{"config", "end_effector_pos, "tau", "arm"}].
+        """
+        # compute all configurations for the left and right arms if they are not already computed
+        if self.configurations_l is None or self.configurations_r is None:
+            # Compute all configurations within the specified range for the left arm
+            self.configurations_l = self.compute_all_configurations(range,resolution, end_effector_name_left)
+            # Compute all configurations within the specified range for the right arm
+            self.configurations_r = self.compute_all_configurations(range,resolution, end_effector_name_right)
+            
+        # Verify the configurations to check if they are valid for both arms
+        valid_configurations = self.verify_configurations(self.configurations_l,self.configurations_r, masses, checked_frames)
+        
+        return valid_configurations
+    
+
+
     def compute_forward_dynamics_aba_method(self, q : np.ndarray, qdot : np.ndarray, tau : np.ndarray, extForce : np.ndarray[pin.Force] = None) -> np.ndarray:
         """
         Compute the forward dynamics acceleration vector with Articulated-Body algorithm(ABA).
@@ -214,6 +486,7 @@ class TorqueCalculator:
         :param q: Joint configuration vector.
         :param qdot: Joint velocity vector.
         :param tau: Joint torque vector.
+        :param extForce: External forces vector applied to the robot model.
         :return: Acceleration vector.
         """
         
@@ -248,6 +521,102 @@ class TorqueCalculator:
             raise ValueError("Failed to compute Jacobian")
         
         return J_frame
+    
+
+    def get_maximum_torques(self, valid_configs : np.ndarray) -> np.ndarray | np.ndarray:
+        """
+        Get the maximum torques for each joint in all valid configurations.
+        
+        :param valid_configs: Array of valid configurations with related torques in format: [{"config", "end_effector_pos, "tau"}].
+        :return: Arrays of maximum torques for each joint in the current valid configurations for left and right arm.
+        """
+        
+        # Get the number of joints
+        num_joints = len(valid_configs[0]["tau"])
+        max_torques_left = np.array([], dtype=float)
+        max_torques_right = np.array([], dtype=float)
+
+        # Find maximum absolute torque for each joint
+        for i in range(num_joints):
+            joint_torques_left = [abs(config["tau"][i]) for config in valid_configs if config["arm"] == "left"]
+            joint_torques_right = [abs(config["tau"][i]) for config in valid_configs if config["arm"] == "right"]
+            
+            max_torques_left = np.append( max_torques_left, max(joint_torques_left))
+            max_torques_right = np.append( max_torques_right, max(joint_torques_right))
+
+        return max_torques_left, max_torques_right
+
+            
+        
+
+    def get_normalized_torques(self, tau : np.ndarray, target_torque : np.ndarray = None) -> np.ndarray:
+        """
+        Normalize the torques vector to a unified scale.
+        
+        :param tau: Torques vector to normalize.
+        :return: Normalized torques vector.
+        """
+        if tau is None:
+            raise ValueError("Torques vector is None")
+        
+        norm_tau = []
+
+        # if target_torque is not specified, normalize the torques vector to the effort limits of the robot model
+        if target_torque is None:
+            # Normalize the torques vector
+            for i, torque in enumerate(tau):
+                norm_tau.append(abs(torque) / self.model.effortLimit[i])
+        else:
+            # Normalize the torques vector to the target torque
+            for i, torque in enumerate(tau):
+                if target_torque[i] != 0:
+                    norm_tau.append(abs(torque) / target_torque[i])
+                else:
+                    norm_tau.append(0.0)
+
+
+        return norm_tau
+    
+
+    def get_unified_configurations_torque(self, valid_configs : np.ndarray) -> np.ndarray | np.ndarray:
+        """
+        Get a unified sum of torques for all possible configurations of the robot model.
+        
+        :param q: Joint configuration vector. 
+        :param valid_configs: Array of 
+        """
+        torques_sum = np.array([], dtype=float)
+        norm_torques = np.array([], dtype=float)
+        sum = 0.0
+
+        for valid_config in valid_configs:
+            # get the joint configuration and torques vector from the valid configuration
+            q = valid_config["config"]
+            tau = valid_config["tau"]
+            
+            # calculate the sum of torques for each joint configuration
+            for joint, torque in zip(q, tau):
+                #if abs(torque) < 50:
+                sum += abs(torque)
+                
+            torques_sum = np.append(torques_sum, {"sum" : sum, "end_effector_pos" : valid_config["end_effector_pos"], "arm" : valid_config["arm"]})
+            sum = 0.0  # reset the sum for the next configuration
+
+        # get the maximum torque from the sum of torques for both arms
+        max_torque_l = max([item["sum"] for item in torques_sum if item["arm"] == "left"])
+        max_torque_r = max([item["sum"] for item in torques_sum if item["arm"] == "right"])
+
+        # Normalize the torques vector to a unified scale
+        for tau in torques_sum:
+            if tau["arm"] == "left":
+                norm_tau = tau["sum"] / max_torque_l
+            else:
+                norm_tau = tau["sum"] / max_torque_r
+
+            # append the normalized torque to the array
+            norm_torques = np.append(norm_torques, {"norm_tau" : norm_tau, "end_effector_pos" : tau["end_effector_pos"], "arm" : tau["arm"]})
+
+        return norm_torques
     
 
     def check_zero(self, vec : np.ndarray) -> bool:
@@ -303,7 +672,7 @@ class TorqueCalculator:
     def get_random_configuration(self) -> tuple[np.ndarray, np.ndarray]:
         """
         Get a random configuration for configuration and velocity vectors.
-        :return: Random configuration vector.
+        :return: Random configuration vectors.
         """
         q_limits_lower = self.model.lowerPositionLimit
         q_limits_upper = self.model.upperPositionLimit
@@ -320,40 +689,83 @@ class TorqueCalculator:
             raise ValueError("Failed to get random velocity")
          
         return q, qdot
+    
+
+    def check_joint_limits(self, q : np.ndarray) -> np.ndarray:
+        """
+        Check if the joint configuration vector is within the joint limits of the robot model.
+        
+        :param q: Joint configuration vector to check.
+        :return: Array of booleans indicating if each joint is within the limits.
+        """
+        if q is None:
+            raise ValueError("Joint configuration vector is None")
+        
+        # array to store if the joint is within the limits
+        within_limits = np.zeros(self.model.njoints - 1, dtype=bool)
+
+        # Check if the joint configuration is within the limits
+        for i in range(self.model.njoints - 1): 
+            if q[i] < self.model.lowerPositionLimit[i] or q[i] > self.model.upperPositionLimit[i]:
+                within_limits[i] = False
+            else:
+                within_limits[i] = True
+        
+        return within_limits
 
 
-    def check_effort_limits(self, tau : np.ndarray) -> np.ndarray:
+    def check_effort_limits(self, tau : np.ndarray, arm : str = None) -> np.ndarray:
         """
         Check if the torques vector is within the effort limits of the robot model.
         
         :param tau: Torques vector to check.
+        :param arm: Arm name to filter the torques vector, right or left.
         :return: Array of booleans indicating if each joint is within the effort limits.
         """
         if tau is None:
             raise ValueError("Torques vector is None")
         
         # array to store if the joint is within the limits
-        within_limits = np.zeros(self.model.njoints - 1, dtype=bool)
+        within_limits = np.array([], dtype=bool)
 
-        # Check if the torques are within the limits
-        for i in range(self.model.njoints -1): 
-            if abs(tau[i]) > self.model.effortLimit[i]:
-                print(f"\033[91mJoint {i+2} exceeds effort limit: {tau[i]} > {self.model.effortLimit[i]} \033[0m\n")
-                within_limits[i] = False
-            else:
-                within_limits[i] = True
+        # if arm is not specified, check all joints
+        if arm is None:
+            # Check if the torques are within the limits
+            for i in range(self.model.njoints -1): 
+                if abs(tau[i]) > self.model.effortLimit[i]:
+                    print(f"\033[91mJoint {i+2} exceeds effort limit: {tau[i]} > {self.model.effortLimit[i]} \033[0m\n")
+                    within_limits = np.append(within_limits, False)
+                else:
+                    within_limits = np.append(within_limits, True)
+            
+            if np.all(within_limits):
+                print("All joints are within effort limits. \n")
         
-        print("All joints are within effort limits. \n")
-        
+        else:
+            # Check if the torques are within the limits
+            for i in range(self.model.njoints -1):
+                # TODO arm is "left" or right" but the model has gripper with left and right in the same name
+                if arm in self.model.names[i+1]:
+                    if abs(tau[i]) > self.model.effortLimit[i]:
+                        print(f"\033[91mJoint {i+1} exceeds effort limit: {tau[i]} > {self.model.effortLimit[i]} \033[0m\n")
+                        within_limits = np.append(within_limits, False)
+                    else:
+                        within_limits = np.append(within_limits, True)
+            
+            if np.all(within_limits):
+                print("All joints are within effort limits. \n")
+
+
         return within_limits
 
 
 
     def set_position(self, pos_joints : list[float], name_positions : list[str] ) -> np.ndarray:
         """
-        Set the joint positions of the robot model.
+        Convert joint positions provided by jointstate publisher to the right format of the robot model.
         
-        :param q: Joint configuration vector to set provided by joint state topic.
+        :param pos_joints: List of joint positions provided by jointstate publisher.
+        :param name_positions: List of joint names in the order provided by jointstate publisher.
         """
         
         q = np.zeros(self.model.nq)
@@ -377,6 +789,152 @@ class TorqueCalculator:
         self.update_configuration(q)
         
         return q
+    
+
+    def get_position_for_joint_states(self, q : np.ndarray) -> np.ndarray:
+        """
+        Convert configuration in pinocchio format to right format of joint states publisher
+        Example: continuous joints (wheels) are represented as two values in the configuration vector but 
+        in the joint state publisher they are represented as one value (angle).
+
+        :param q : Joint configuration provided by pinocchio library
+        :return: Joint positions in the format of joint state publisher.
+        """
+        
+        config = []
+        
+        current_selected_config = q
+
+        # Use this method to get the single values for joints, for example continuous joints (wheels) are represented as two values in the configuration vector but 
+        # in the joint state publisher they are represented as one value (angle)
+        # so we need to convert the configuration vector to the right format for joint state publisher
+        cont = 0
+        for i in range(1, self.model.njoints):
+            if self.model.joints[i].nq == 2:
+                # for continuous joints (wheels)
+                config.append({ "q" : math.atan2(current_selected_config[cont+1], current_selected_config[cont]), "joint_name" : self.model.names[i] })
+                
+            elif self.model.joints[i].nq == 1:
+                # for revolute joints
+                config.append({"q" : current_selected_config[cont], "joint_name" : self.model.names[i]})
+            
+            cont += self.model.joints[i].nq
+        
+        return config
+    
+
+    def get_joints_placements(self, q : np.ndarray) -> np.ndarray | float:
+        """
+        Get the placements of the joints in the robot model.
+        
+        :param q: Joint configuration vector.
+        :return: Array of joint placements with names of joint, and z offset of base link.
+        """
+        base_link_id = self.model.getFrameId("base_link")
+        offset_z = self.data.oMf[base_link_id].translation[2]  # Get the z offset of the base link
+
+        self.update_configuration(q)
+        placements = np.array([({"name" : self.model.names[i],
+                                 "type" : self.model.joints[i].shortname() , 
+                                 "x": self.data.oMi[i].translation[0], 
+                                 "y": self.data.oMi[i].translation[1], 
+                                 "z": self.data.oMi[i].translation[2]}) for i in range(1, self.model.njoints)], dtype=object)
+        
+        return placements, offset_z
+    
+
+    def get_joint_placement(self, joint_id : int) -> dict:
+        """
+        Get the placement of a specific joint in the robot model.
+        
+        :param joint_id: ID of the joint to get the placement for.
+        :return: Dictionary with coordinates x , y , z of the joint.
+        """
+        
+        if joint_id < 0 or joint_id >= self.model.njoints:
+            raise ValueError(f"Joint ID {joint_id} is out of bounds for the robot model with {self.model.njoints} joints.")
+        
+        placement = self.data.oMi[joint_id].translation
+        
+        return {"x" : placement[0], "y": placement[1], "z": placement[2]}
+        
+
+    def get_mass_matrix(self, q : np.ndarray) -> np.ndarray:
+        """
+        Compute the mass matrix for the robot model.
+        
+        :param q: Joint configuration vector.
+        :return: Mass matrix.
+        """
+        
+        mass_matrix = pin.crba(self.model, self.data, q)
+        if mass_matrix is None:
+            raise ValueError("Failed to compute mass matrix")
+        
+        return mass_matrix
+    
+
+
+    def get_joints(self) -> np.ndarray:
+        """
+        Get the array joint names of the robot model.
+        
+        :return: array Joint names .
+        """
+        
+        return np.array(self.model.names[1:], dtype=str)
+    
+
+
+    def get_frames(self) -> np.ndarray:
+        """
+        Get the array of frame names in the robot model.
+        
+        :return: array of frame names.
+        """
+        
+        return np.array([frame.name for frame in self.model.frames if frame.type == pin.FrameType.BODY], dtype=str)
+    
+
+
+    def get_active_frames(self) -> np.ndarray:
+        """
+        Get the array of active joint names in the robot model.
+        
+        :return: array of active joint names.
+        """
+        # Get frames where joints are parents
+        frame_names = []
+        for i in range(1, self.model.njoints):
+            for frame in self.model.frames:
+                if frame.parentJoint == i and frame.type == pin.FrameType.BODY:
+                    frame_names.append(frame.name)
+                    break
+        
+        return np.array(frame_names, dtype=str)
+    
+
+
+    def get_parent_joint_id(self, frame_name : str) -> int:
+        """
+        Get the parent joint ID for a given frame name.
+        
+        :param frame_name: Name of the frame.
+        :return: Joint ID.
+        """
+        
+        if frame_name is None:
+            raise ValueError("Frame name must be provided")
+        
+        # Get the frame ID from the model
+        frame_id = self.model.getFrameId(frame_name)
+        joint_id = self.model.frames[frame_id].parentJoint
+        
+        if joint_id == -1:
+            raise ValueError(f"Joint '{joint_id}' not found in the robot model")
+        
+        return joint_id
+    
 
     def print_configuration(self, q : np.ndarray = None):
         """
@@ -390,19 +948,6 @@ class TorqueCalculator:
             print(f"Frame: {frame.name}")
             print(f"  Rotation:\n{placement.rotation}")
             print(f"  Translation:\n{placement.translation}")
-    
-    def get_joints_placements(self, q : np.ndarray) -> np.ndarray:
-        """
-        Get the placements of the joints in the robot model.
-        
-        :param q: Joint configuration vector.
-        :return: Array of joint placements with names of joint.
-        """
-        
-        self.update_configuration(q)
-        placements = np.array([({"name" : self.model.names[i], "x": self.data.oMi[i].translation[0], "y": self.data.oMi[i].translation[1], "z": self.data.oMi[i].translation[2]}) for i in range(1, self.model.njoints)], dtype=object)
-        
-        return placements
 
 
     def print_torques(self, tau : np.ndarray):
@@ -413,13 +958,18 @@ class TorqueCalculator:
         """
         if tau is None:
             raise ValueError("Torques vector is None")
-        
+
         print("Torques vector:")
         for i, torque in enumerate(tau):
-            # TODO Extract type of joint in order to print right measure unit ([N] or [Nm])
-            print(f"Joint {i+2} {self.model.names[i+1]}: {torque:.4f} Nm")
-        
+            # check if the joint is a prismatic joint
+            if self.model.joints[i+1].shortname() == "JointModelPZ":
+                print(f"Joint {i+2} {self.model.names[i+1]}: {torque:.4f} N")
+                
+            # for revolute joints
+            else:
+                print(f"Joint {i+2} {self.model.names[i+1]}: {torque:.4f} Nm")
         print("\n")
+
 
 
     def print_frames(self):
