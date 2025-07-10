@@ -55,18 +55,10 @@ class TorqueCalculator:
             # Add collisition pairs
             self.geom_model.addAllCollisionPairs()
 
-            #self.ik_model = chain.Chain.from_urdf_file(temp_urdf_path)
-            #self.ik_model = Robot.from_urdf_file(temp_urdf_path, "base_link", "arm_left_7_link")
             os.unlink(temp_urdf_path)
 
         elif isinstance(robot_description, Path):
             self.model = pin.buildModelFromUrdf(str(robot_description.resolve()))
-            
-            # create data for IK solver
-            #self.ik_model = Robot.from_urdf_file(str(robot_description.resolve()), "base_link", "arm_left_7_link")
-        
-        
-        #self.ik_config = SolverConfig()
         
         # create data for the robot model
         self.data = self.model.createData()
