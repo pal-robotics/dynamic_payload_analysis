@@ -163,7 +163,9 @@ class RobotDescriptionSubscriber(Node):
         """
         # if the user choose to compute the workspace area then compute the valid configurations
         if self.menu.get_workspace_state():
-            self.valid_configurations = self.robot.get_valid_workspace(2, 0.20, "gripper_left_finger_joint", "gripper_right_finger_joint", self.masses, self.checked_frames)
+            self.valid_configurations = self.robot.get_valid_workspace(2, 0.20, "arm_left_7_joint", "arm_right_7_joint", self.masses, self.checked_frames)
+
+            self.valid_configurations  = self.robot.compute_maximum_payloads(self.valid_configurations)
             
             # insert the valid configurations in the menu
             self.menu.insert_dropdown_configuration(self.valid_configurations)
@@ -177,7 +179,7 @@ class RobotDescriptionSubscriber(Node):
         # if there are valid configurations, publish the workspace area
         if self.valid_configurations is not None:
             # publish the workspace area
-            self.publish_workspace_area(self.valid_configurations)
+            self.publish_workspace_area()
             
             
 
@@ -324,12 +326,10 @@ class RobotDescriptionSubscriber(Node):
         self.publisher_rviz_torque.publish(marker_array)
         
 
-    def publish_workspace_area(self, valid_configs: np.ndarray ):
+    def publish_workspace_area(self):
         """
         Publish the workspace area in RViz using points and labels for the end points.
 
-        Args:
-            valid_configs (np.ndarray): Current valid configurations in the workspace of the robot.
         """
         # Create a MarkerArray to visualize the number of configuration of a specific point in the workspace
         marker_point_names = MarkerArray()
@@ -339,11 +339,14 @@ class RobotDescriptionSubscriber(Node):
 
         # calculate the maximum torques for each joint in the current valid configurations for each arm only if the user selected the max current torque visualization
         if self.menu.get_torque_color() == TorqueVisualizationType.MAX_CURRENT_TORQUE:
-            max_torque_for_joint_left, max_torque_for_joint_right = self.robot.get_maximum_torques(valid_configs)
+            max_torque_for_joint_left, max_torque_for_joint_right = self.robot.get_maximum_torques(self.valid_configurations)
+        
+
+        
 
         cont = 0
         # Iterate through the valid configurations and create markers
-        for i, valid_config in enumerate(valid_configs):
+        for i, valid_config in enumerate(self.valid_configurations):
             
             # create the label for the end point (end effector position) of the valid configuration
             marker_point_name = Marker()
@@ -414,7 +417,7 @@ class RobotDescriptionSubscriber(Node):
 
 
         # get the unified torque for the valid configurations
-        unified_configurations_torque = self.robot.get_unified_configurations_torque(valid_configs)
+        unified_configurations_torque = self.robot.get_unified_configurations_torque(self.valid_configurations)
 
         # insert points related to the end effector position in the workspace area and with color based on the normalized torque for each configuration
         # this is used to visualize the workspace area with the unified torques for each configuration

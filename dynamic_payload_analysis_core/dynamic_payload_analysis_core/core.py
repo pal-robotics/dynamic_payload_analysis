@@ -25,8 +25,6 @@ import tempfile
 from ikpy import chain
 import os
 
-# TODO : If a workspace calculation is already done, store the results in a file to avoid recalculating it and make only the
-# verification of the payload handling in the workspace.
 
 
 
@@ -189,45 +187,6 @@ class TorqueCalculator:
         """
         pin.forwardKinematics(self.model, self.data, q)
         pin.updateFramePlacements(self.model, self.data)
-
-
-    def compute_maximum_payload(self, q : np.ndarray, qdot : np.ndarray, tau : np.ndarray, frame_name : str) -> float:
-        """
-        Compute the forward dynamics acceleration vector.
-        
-        :param q: Joint configuration vector.
-        :param qdot: Joint velocity vector.
-        :param tau: Joint torque vector.
-        :param frame_name: Name of the frame where the force is applied.
-        :return: Acceleration vector.
-        """
-        # TODO : refactor this method
-        
-        # Update the configuration of the robot model
-        self.update_configuration(q)
-
-        # basic idea for forward dynamics: M(q) * a_q + b = tau(q) --> a_q = (tau(q) - b)/ M(q)
-        # with external force, the equation becomes: M(q) * a_q + b = tau(q) + J_traspose(q) * f_ext -- > f_ext = (M(q) * a_q + b - tau(q))/ J_traspose(q)
-
-        qddot0 = np.zeros(self.model.nv) # Initialize acceleration vector
-        
-        # calculate dynamics drift
-        b = pin.rnea(self.model, self.data, q, qdot, qddot0)
-
-        #get jacobian of the frame where the payload is applied
-        J = self.compute_jacobian(q, frame_name)
-
-        tau_r = b - tau
-        
-        try:
-            #a = np.linalg.solve(M, tau - b)
-            # get F = (J_transpose(q))^-1  X ( tau - b ) with b = M(q)*a_q + b || pinv = pseudo-inverse to prevent singularities
-            F_max = np.linalg.pinv(J.T) @ tau_r
-
-        except np.linalg.LinAlgError as e:
-            raise ValueError(f"Failed to solve for acceleration: {e}")
-        
-        return F_max[2] # get the force in z axis of the world frame, which is the maximum force payload
     
 
 
@@ -471,28 +430,30 @@ class TorqueCalculator:
             self.configurations_l = self.compute_all_configurations(range,resolution, end_effector_name_left)
             # Compute all configurations within the specified range for the right arm
             self.configurations_r = self.compute_all_configurations(range,resolution, end_effector_name_right)
-            
+        
+        # TODO make here the calculation for the maximum payload for each configuration in order to increase the speed of the verification
+
         # Verify the configurations to check if they are valid for both arms
         valid_configurations = self.verify_configurations(self.configurations_l,self.configurations_r, masses, checked_frames)
         
         return valid_configurations
     
 
-    # TODO : test it
+
     def compute_maximum_payloads(self, configs : np.ndarray):
         """
         Compute the maximum payload for each provided configuration and return the results with the configs updated with the maximum payload as a new value.
         :param configs: Array of configurations , format {"config", "end_effector_pos", "tau", "arm", "max_payload" }     
         """
-        # payload limit 
+        # payload limits
         payload_limit = 10
         resolution_payload = 0.01
 
         for config in configs:
              # iterate over a possible set of payloads 
              for mass in np.arange(0, payload_limit , resolution_payload):
-                # Create external forces based on the masses and checked frames TODO change name in arm 7 for example
-                ext_forces = self.create_ext_force(mass, f"gripper_{config['arm']}_finger_joint", config["config"])
+                # Create external forces based on the masses and checked frames
+                ext_forces = self.create_ext_force(mass, f"arm_{config['arm']}_7_joint", config["config"])
                 # calculate the current torques
                 tau = self.compute_inverse_dynamics(config["config"], self.get_zero_velocity(), self.get_zero_acceleration(),extForce=ext_forces)
                 
