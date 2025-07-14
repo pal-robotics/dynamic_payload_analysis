@@ -51,7 +51,7 @@ class MenuPayload():
         self.selected_configuration = None
 
         # payload mass selection array
-        self.payload_selection = np.array([0.1, 0.2, 0.3, 0.4, 0.5, 1, 1.5, 1.8, 2.0, 2.5, 3.0, 3.5], dtype=float)
+        self.payload_selection = np.array([0.1, 0.2, 0.3, 0.4, 0.5, 1, 1.5, 1.8, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0, 5.5], dtype=float)
 
         # variable to store selection between torque limits or max torque in the current configuration for color visualization
         self.torque_color = TorqueVisualizationType.TORQUE_LIMITS # default is torque limits
@@ -62,12 +62,16 @@ class MenuPayload():
         # insert the reset payload button 
         self.reset = self.menu_handler.insert('Reset payloads', parent=self.root_frames, callback=self.callback_reset)
         
+        # insert label for the color menu selection
+        self.label_color_selection = self.menu_handler.insert('Select torque visualization color :',callback=self.callback_label)
+
         # insert the checker for visualization color choice between torque limits or max torque in the current configuration
         self.torque_limits_checker = self.menu_handler.insert('Torque limits',command=str(TorqueVisualizationType.TORQUE_LIMITS.value) , callback=self.callback_color_selection)
         self.max_torque_checker = self.menu_handler.insert('Max torque', command=str(TorqueVisualizationType.MAX_CURRENT_TORQUE.value) , callback=self.callback_color_selection)
 
         self.menu_handler.setVisible(self.torque_limits_checker, False)
         self.menu_handler.setVisible(self.max_torque_checker, False)
+        self.menu_handler.setVisible(self.label_color_selection, False)
         
 
         self.make_menu_marker('menu_frames')
@@ -94,6 +98,15 @@ class MenuPayload():
         self.menu_handler.reApply(self.server)
         self.server.applyChanges()
     
+    def callback_label(self, feedback):
+        """
+        Callback for the label of color selection. Made only to avoid the error of missing callback.
+        
+        Args:
+            feedback: Feedback from the menu selection.
+        """
+        pass
+
     def callback_color_selection(self, feedback):
         """
         Callback for torque selection type to change the visualization color in Rviz.
@@ -151,6 +164,7 @@ class MenuPayload():
         # set visible true for color selection and put the default check state
         self.menu_handler.setVisible(self.torque_limits_checker, True)
         self.menu_handler.setVisible(self.max_torque_checker, True)
+        self.menu_handler.setVisible(self.label_color_selection, True)
         self.menu_handler.setCheckState(self.torque_limits_checker, MenuHandler.CHECKED)
         self.menu_handler.setCheckState(self.max_torque_checker, MenuHandler.UNCHECKED)
 
@@ -223,9 +237,13 @@ class MenuPayload():
                     self.menu_handler.setCheckState(sub_item, MenuHandler.UNCHECKED)
             
              # check if the item is the reset payloads or compute workspace item and skip the unchanging of the check state
-            if item.title == "Reset payloads" or item.title == "Compute workspace":
+            if item.title == self.menu_handler.getTitle(self.reset) or item.title == self.menu_handler.getTitle(self.workspace_button):
                 continue
                 
+            if item.title == self.menu_handler.getTitle(self.label_color_selection):
+                self.menu_handler.setVisible(self.label_color_selection, False)
+                continue
+            
             # set the checked of frame to unchecked 
             self.menu_handler.setCheckState(i,MenuHandler.UNCHECKED)
         
@@ -250,6 +268,11 @@ class MenuPayload():
         Args:
             feedback: Feedback from the menu selection.
         """
+
+        # reset the sub-menu configuration if the user change payload selection
+        self.reset_sub_menu_configuration()
+        # -------------
+
         # get name of the frame
         handle = feedback.menu_entry_id
         title = self.menu_handler.getTitle(handle)
@@ -269,7 +292,29 @@ class MenuPayload():
         # print the current state of the checked frames
         print(f"{self.get_item_state()} \n")
 
-        
+    
+    def reset_sub_menu_configuration(self):
+        """
+        Function to reset the sub-menu configuration and related variables.
+        """
+        # reset calculated configurations in the workspace submenu
+        for i, item in self.menu_handler.entry_contexts_.items():
+            # check if the item is the workspace button and has sub entries and remove them from view
+            if item.sub_entries and item.title == self.menu_handler.getTitle(self.workspace_button):
+                # if the frame has payloads selection, we need to remove it
+                for sub_item in item.sub_entries:
+                    self.menu_handler.setVisible(sub_item, False)
+                    self.menu_handler.setCheckState(sub_item, MenuHandler.UNCHECKED)
+
+        # hide the torque limits and max torque checkboxes when there is no configuration selected
+        self.menu_handler.setVisible(self.torque_limits_checker, False)
+        self.menu_handler.setVisible(self.max_torque_checker, False)
+        self.menu_handler.setVisible(self.label_color_selection, False)
+
+        self.torque_color = TorqueVisualizationType.TORQUE_LIMITS  # reset to default torque limits
+
+        # reset the selected configuration
+        self.selected_configuration = None
     
 
     def update_item(self, name, check: bool):
@@ -328,6 +373,9 @@ class MenuPayload():
         Args:
             feedback: Feedback from the menu selection.
         """
+        # reset the sub-menu configuration if the user change payload selection
+        self.reset_sub_menu_configuration() 
+
         # get the handle of the selected item (id)
         handle = feedback.menu_entry_id
         # get the title of the selected item (it contains number of kg)
