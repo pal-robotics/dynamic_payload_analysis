@@ -56,7 +56,7 @@ You can select the target torque in the interactive markers menu, as shown below
 <img src="images/color_points.png" alt="Target Torque Selection" width="500"/>
 </div> 
 
-## Color legend
+## Colors legend
 - **Green** : the joint torque is close to zero or the minimum current torque
 - **Yellow** : the joint torque is close to the middle of the limits or the maximum current torque
 - **Red** : the joint torque is close to the maximum joint torque or the maximum current torque
