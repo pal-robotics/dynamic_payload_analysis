@@ -157,7 +157,7 @@ class MenuPayload():
 
         for i, item in enumerate(configuration):
             # insert the parent in the command field to keep track of the parent id
-            last_entry = self.menu_handler.insert(f"Configuration {i} | arm: " + item["arm"] + " | max payload : " + str(item["max_payload"]) , parent=self.workspace_button, command=str(self.workspace_button), callback=self.callback_configuration_selection)
+            last_entry = self.menu_handler.insert(f"Configuration {i} | arm: " + item["arm"], parent=self.workspace_button, command=str(self.workspace_button), callback=self.callback_configuration_selection)
             self.menu_handler.setCheckState(last_entry, MenuHandler.UNCHECKED)
             self.menu_handler.setVisible(last_entry, True)
         
@@ -165,7 +165,6 @@ class MenuPayload():
         self.menu_handler.setVisible(self.torque_limits_checker, True)
         self.menu_handler.setVisible(self.max_torque_checker, True)
         self.menu_handler.setVisible(self.label_color_selection, True)
-        
         self.menu_handler.setCheckState(self.torque_limits_checker, MenuHandler.CHECKED)
         self.menu_handler.setCheckState(self.max_torque_checker, MenuHandler.UNCHECKED)
 
