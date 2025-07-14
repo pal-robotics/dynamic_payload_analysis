@@ -27,7 +27,7 @@ After adding the markers, you'll be able to see a view similar to the one shown 
 1) With a right click on the interactive markers, you can open a menu to select payloads and choose the position where to apply them. The menu will look like this:
 
 <div style="text-align: center;">
-<img src="images/output.gif" alt="Menu" width="500"/>
+<img src="images/payload_selection.gif" alt="Payload selection" width="500"/>
 </div>
 
 2) After selecting the payloads, you can calculate and visualize the workspace area and the valid configurations with the button **"Compute workspace"**
@@ -38,22 +38,34 @@ After adding the markers, you'll be able to see a view similar to the one shown 
 <img src="images/photo_workspace.png" alt="Workspace Area" width="500"/>
 </div>
 
-## Visualization legends and rules
+## Visualization logic
 The position of visualized points represents the end points of the robot arms and the color of the point represents the amount of torque based on different target torque. <br>
-The script publishes a point for each joint of the robot arms, so in order to visualize only the color of a specific joint you can select only the namespace related to that joint in the interactive markers menu, like shown below:
+The script publishes a point for each joint of the robot arms, so in order to visualize only the color of a specific joint you can select only the namespace related to that joint in the interactive markers menu, as shown below:
 <div style="text-align: center;">
-<img src="images/namespace_selection.png" alt="Joint Selection" width="500"/>
+<img src="images/namespace_selection.png" alt="Namespace Selection" width="500"/>
 </div>
 
-The script allow to visualize the colors of the joints with different target torques:
+The script allow you to visualize the colors of the joints with different target torques:
 - **Joint limits** : the colors are based on the joint limits provided by the URDF file
 - **Maximum current torque** : the colors are based on the maximum current torques of the joints in the current payloads configuration
 
 
-You can select the target torque in the interactive markers menu, like shown below:
+You can select the target torque in the interactive markers menu, as shown below:
 
 <div style="text-align: center;">
-<img src="images/target_torque_selection.png" alt="Target Torque Selection" width="500"/>
+<img src="images/color_points.png" alt="Target Torque Selection" width="500"/>
 </div> 
 
+## Color legend
+- **Green** : the joint torque is close to zero or the minimum current torque
+- **Yellow** : the joint torque is close to the middle of the limits or the maximum current torque
+- **Red** : the joint torque is close to the maximum joint torque or the maximum current torque
 
+## Displaying of allowed configurations
+The script allows you to visualize the allowed configurations of the robot arms in the workspace area. To select one of the allowed configurations, you can choose the configuration from the sub-menu of the **Compute workspace** button, as shown below:
+
+<div style="text-align: center;">
+<img src="images/config_selection.gif" alt="Config selection" width="500"/>
+</div>
+
+Each point in the workspace area is labeled with its configuration number, which matches the configuration number in the sub-menu of the **Compute workspace** button.
