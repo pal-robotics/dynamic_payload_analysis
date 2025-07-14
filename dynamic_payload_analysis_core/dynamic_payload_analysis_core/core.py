@@ -478,6 +478,36 @@ class TorqueCalculator:
         return valid_configurations
     
 
+    # TODO : test it
+    def compute_maximum_payloads(self, configs : np.ndarray):
+        """
+        Compute the maximum payload for each provided configuration and return the results with the configs updated with the maximum payload as a new value.
+        :param configs: Array of configurations , format {"config", "end_effector_pos", "tau", "arm", "max_payload" }     
+        """
+        # payload limit 
+        payload_limit = 10
+        resolution_payload = 0.01
+
+        for config in configs:
+             # iterate over a possible set of payloads 
+             for mass in np.arange(0, payload_limit , resolution_payload):
+                # Create external forces based on the masses and checked frames TODO change name in arm 7 for example
+                ext_forces = self.create_ext_force(mass, f"gripper_{config['arm']}_finger_joint", config["config"])
+                # calculate the current torques
+                tau = self.compute_inverse_dynamics(config["config"], self.get_zero_velocity(), self.get_zero_acceleration(),extForce=ext_forces)
+                
+                if not self.check_effort_limits(tau,config["arm"]).all():
+                    # if the current payload is not valid, the maximum payload is the previous one
+                    config["max_payload"] = mass - resolution_payload
+                    break
+                else:
+                    # if the current payload is valid, update the maximum payload
+                    config["max_payload"] = mass
+            
+
+        return configs
+
+
 
     def compute_forward_dynamics_aba_method(self, q : np.ndarray, qdot : np.ndarray, tau : np.ndarray, extForce : np.ndarray[pin.Force] = None) -> np.ndarray:
         """
