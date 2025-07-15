@@ -27,7 +27,7 @@ After adding the markers, you'll be able to see a view similar to the one shown 
 1) With a right click on the interactive markers, you can open a menu to select payloads and choose the position where to apply them. The menu will look like this:
 
 <div style="text-align: center;">
-<img src="images/payload_selection.gif" alt="Payload selection" width="500"/>
+<img src="images/payload_selection.gif" alt="Payload selection" width="600"/>
 </div>
 
 2) After selecting the payloads, you can calculate and visualize the workspace area and the valid configurations with the button **"Compute workspace"**
@@ -65,7 +65,7 @@ You can select the target torque in the interactive markers menu, as shown below
 The script allows you to visualize the allowed configurations of the robot arms in the workspace area. To select one of the allowed configurations, you can choose the configuration from the sub-menu of the **Compute workspace** button, as shown below:
 
 <div style="text-align: center;">
-<img src="images/config_selection.gif" alt="Config selection" width="500"/>
+<img src="images/config_selection.gif" alt="Config selection" width="600"/>
 </div>
 
 Each point in the workspace area is labeled with its configuration number, which matches the configuration number in the sub-menu of the **Compute workspace** button.
