@@ -165,7 +165,8 @@ class RobotDescriptionSubscriber(Node):
         if self.menu.get_workspace_state():
             self.valid_configurations = self.robot.get_valid_workspace(2, 0.20, "arm_left_7_joint", "arm_right_7_joint", self.masses, self.checked_frames)
 
-            self.valid_configurations  = self.robot.compute_maximum_payloads(self.valid_configurations)
+            # compute the maximum payloads for the valid configurations
+            self.valid_configurations = self.robot.compute_maximum_payloads(self.valid_configurations)
             
             # insert the valid configurations in the menu
             self.menu.insert_dropdown_configuration(self.valid_configurations)
