@@ -439,36 +439,42 @@ class TorqueCalculator:
         return valid_configurations
     
 
-
     def compute_maximum_payloads(self, configs : np.ndarray):
         """
         Compute the maximum payload for each provided configuration and return the results with the configs updated with the maximum payload as a new value.
         :param configs: Array of configurations , format {"config", "end_effector_pos", "tau", "arm", "max_payload" }     
         """
-        # payload limits
-        payload_limit = 10
-        resolution_payload = 0.01
-
         for config in configs:
-             # iterate over a possible set of payloads 
-             for mass in np.arange(0, payload_limit , resolution_payload):
-                # Create external forces based on the masses and checked frames
-                ext_forces = self.create_ext_force(mass, f"arm_{config['arm']}_7_joint", config["config"])
-                # calculate the current torques
-                tau = self.compute_inverse_dynamics(config["config"], self.get_zero_velocity(), self.get_zero_acceleration(),extForce=ext_forces)
-                
-                if not self.check_effort_limits(tau,config["arm"]).all():
-                    # if the current payload is not valid, the maximum payload is the previous one
-                    config["max_payload"] = mass - resolution_payload
-                    break
-                else:
-                    # if the current payload is valid, update the maximum payload
-                    config["max_payload"] = mass
-            
-
+            config["max_payload"] = self.find_max_payload_binary_search(config, config["arm"], payload_min=0.0, payload_max=10, resolution=0.01)
+        
         return configs
 
 
+    def find_max_payload_binary_search(self, config, arm, payload_min=0.0, payload_max=10.0, resolution=0.01):
+        """
+        Find the maximum payload for a given configuration using binary search.
+        :param config: Configuration dictionary (must contain 'config' key).
+        :param arm: Arm name ('left' or 'right').
+        :param payload_min: Minimum payload to test.
+        :param payload_max: Maximum payload to test.
+        :param resolution: Desired precision.
+        :return: Maximum allowable payload.
+        """
+        low = payload_min
+        high = payload_max
+        max_valid = payload_min
+
+        while high - low > resolution:
+            mid_payload = (low + high) / 2
+            ext_forces = self.create_ext_force(mid_payload, f"arm_{arm}_7_joint", config["config"])
+            tau = self.compute_inverse_dynamics(config["config"], self.get_zero_velocity(), self.get_zero_acceleration(), extForce=ext_forces)
+            if self.check_effort_limits(tau, arm).all():
+                max_valid = mid_payload
+                low = mid_payload
+            else:
+                high = mid_payload
+
+        return max_valid
 
     def compute_forward_dynamics_aba_method(self, q : np.ndarray, qdot : np.ndarray, tau : np.ndarray, extForce : np.ndarray[pin.Force] = None) -> np.ndarray:
         """
