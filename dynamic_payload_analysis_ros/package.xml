@@ -4,7 +4,7 @@
   <name>dynamic_payload_analysis_ros</name>
   <version>0.0.0</version>
   <description>This package provides tools for dynamic payload analysis in robotics with a focus on torque calculations and external force handling.</description>
-  <maintainer email="enrimoro003@gmail.com">morolinux</maintainer>
+  <maintainer email="enrimoro003@gmail.com">Moro Enrico</maintainer>
   <license>Apache License 2.0</license>
 
   <test_depend>ament_copyright</test_depend>

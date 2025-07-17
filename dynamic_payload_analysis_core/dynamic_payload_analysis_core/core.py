@@ -25,8 +25,6 @@ import tempfile
 from ikpy import chain
 import os
 
-# TODO : If a workspace calculation is already done, store the results in a file to avoid recalculating it and make only the
-# verification of the payload handling in the workspace.
 
 
 
@@ -189,45 +187,6 @@ class TorqueCalculator:
         """
         pin.forwardKinematics(self.model, self.data, q)
         pin.updateFramePlacements(self.model, self.data)
-
-
-    def compute_maximum_payload(self, q : np.ndarray, qdot : np.ndarray, tau : np.ndarray, frame_name : str) -> float:
-        """
-        Compute the forward dynamics acceleration vector.
-        
-        :param q: Joint configuration vector.
-        :param qdot: Joint velocity vector.
-        :param tau: Joint torque vector.
-        :param frame_name: Name of the frame where the force is applied.
-        :return: Acceleration vector.
-        """
-        # TODO : refactor this method
-        
-        # Update the configuration of the robot model
-        self.update_configuration(q)
-
-        # basic idea for forward dynamics: M(q) * a_q + b = tau(q) --> a_q = (tau(q) - b)/ M(q)
-        # with external force, the equation becomes: M(q) * a_q + b = tau(q) + J_traspose(q) * f_ext -- > f_ext = (M(q) * a_q + b - tau(q))/ J_traspose(q)
-
-        qddot0 = np.zeros(self.model.nv) # Initialize acceleration vector
-        
-        # calculate dynamics drift
-        b = pin.rnea(self.model, self.data, q, qdot, qddot0)
-
-        #get jacobian of the frame where the payload is applied
-        J = self.compute_jacobian(q, frame_name)
-
-        tau_r = b - tau
-        
-        try:
-            #a = np.linalg.solve(M, tau - b)
-            # get F = (J_transpose(q))^-1  X ( tau - b ) with b = M(q)*a_q + b || pinv = pseudo-inverse to prevent singularities
-            F_max = np.linalg.pinv(J.T) @ tau_r
-
-        except np.linalg.LinAlgError as e:
-            raise ValueError(f"Failed to solve for acceleration: {e}")
-        
-        return F_max[2] # get the force in z axis of the world frame, which is the maximum force payload
     
 
 
@@ -471,13 +430,50 @@ class TorqueCalculator:
             self.configurations_l = self.compute_all_configurations(range,resolution, end_effector_name_left)
             # Compute all configurations within the specified range for the right arm
             self.configurations_r = self.compute_all_configurations(range,resolution, end_effector_name_right)
-            
+        
+        # TODO make here the calculation for the maximum payload for each configuration in order to increase the speed of the verification
+
         # Verify the configurations to check if they are valid for both arms
         valid_configurations = self.verify_configurations(self.configurations_l,self.configurations_r, masses, checked_frames)
         
         return valid_configurations
     
 
+    def compute_maximum_payloads(self, configs : np.ndarray):
+        """
+        Compute the maximum payload for each provided configuration and return the results with the configs updated with the maximum payload as a new value.
+        :param configs: Array of configurations , format {"config", "end_effector_pos", "tau", "arm", "max_payload" }     
+        """
+        for config in configs:
+            config["max_payload"] = self.find_max_payload_binary_search(config, payload_min=0.0, payload_max=10, resolution=0.01)
+        
+        return configs
+
+
+    def find_max_payload_binary_search(self, config, payload_min=0.0, payload_max=10.0, resolution=0.01):
+        """
+        Find the maximum payload for a given configuration using binary search.
+        :param config: Configuration dictionary (must contain 'config' key).
+        :param payload_min: Minimum payload to test.
+        :param payload_max: Maximum payload to test.
+        :param resolution: Desired precision.
+        :return: Maximum allowable payload.
+        """
+        low = payload_min
+        high = payload_max
+        max_valid = payload_min
+
+        while high - low > resolution:
+            mid_payload = (low + high) / 2
+            ext_forces = self.create_ext_force(mid_payload, f"arm_{config['arm']}_7_joint", config["config"])
+            tau = self.compute_inverse_dynamics(config["config"], self.get_zero_velocity(), self.get_zero_acceleration(), extForce=ext_forces)
+            if self.check_effort_limits(tau, config['arm']).all():
+                max_valid = mid_payload
+                low = mid_payload
+            else:
+                high = mid_payload
+
+        return max_valid
 
     def compute_forward_dynamics_aba_method(self, q : np.ndarray, qdot : np.ndarray, tau : np.ndarray, extForce : np.ndarray[pin.Force] = None) -> np.ndarray:
         """
@@ -546,6 +542,19 @@ class TorqueCalculator:
 
         return max_torques_left, max_torques_right
 
+
+    def get_maximum_payloads(self, valid_configs : np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        """
+        Get the maximum payloads for all configuration in the left and right arm.
+        
+        :param valid_configs: Array of valid configurations with related torques in format: [{"config", "end_effector_pos, "tau", "arm", "max_payload"}].
+        :return: Tuple of arrays of maximum payloads for left and right arms.
+        """
+        
+        max_payload_left = max([config["max_payload"] for config in valid_configs if config["arm"] == "left"])
+        max_payload_right = max([config["max_payload"] for config in valid_configs if config["arm"] == "right"])
+
+        return max_payload_left, max_payload_right
             
         
 
@@ -574,9 +583,21 @@ class TorqueCalculator:
                 else:
                     norm_tau.append(0.0)
 
-
         return norm_tau
-    
+
+
+    def get_normalized_payload(self, payload : np.ndarray, target_payload : float) -> np.ndarray:
+        """
+        Normalize the torques vector to a unified scale.
+        
+        :param payload: Maximum payload for a configuration.
+        :param target_payload: Target payload to normalize the payload to.
+        :return: Normalized payload.
+        """
+        norm_payload = abs(payload) / target_payload
+
+        return norm_payload    
+
 
     def get_unified_configurations_torque(self, valid_configs : np.ndarray) -> np.ndarray | np.ndarray:
         """
