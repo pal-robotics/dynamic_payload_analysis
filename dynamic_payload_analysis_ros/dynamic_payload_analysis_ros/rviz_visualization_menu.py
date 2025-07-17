@@ -51,6 +51,9 @@ class RobotDescriptionSubscriber(Node):
         # Pusblisher for point cloud workspace area
         self.publisher_workspace_area = self.create_publisher(MarkerArray, '/workspace_area', 10)
 
+        # Pusblisher for point cloud of maximum payloads in the workspace area
+        self.publisher_maximum_payloads = self.create_publisher(MarkerArray, '/maximum_payloads', 10)
+
         # Publisher for point names in the workspace area
         self.publisher_workspace_area_names = self.create_publisher(MarkerArray, '/workspace_area_names', 10)
 
@@ -181,6 +184,7 @@ class RobotDescriptionSubscriber(Node):
         if self.valid_configurations is not None:
             # publish the workspace area
             self.publish_workspace_area()
+            self.publish_maximum_payloads_area()
             
             
 
@@ -342,9 +346,6 @@ class RobotDescriptionSubscriber(Node):
         if self.menu.get_torque_color() == TorqueVisualizationType.MAX_CURRENT_TORQUE:
             max_torque_for_joint_left, max_torque_for_joint_right = self.robot.get_maximum_torques(self.valid_configurations)
         
-
-        
-
         cont = 0
         # Iterate through the valid configurations and create markers
         for i, valid_config in enumerate(self.valid_configurations):
@@ -451,7 +452,82 @@ class RobotDescriptionSubscriber(Node):
         # Publish the marker points and names
         self.publisher_workspace_area.publish(marker_points)
         self.publisher_workspace_area_names.publish(marker_point_names)
-        
+    
+
+    def publish_maximum_payloads_area(self):
+        """
+        Publish the maximum payloads area in RViz using points and labels for the end points.
+        """
+        # Create a MarkerArray to visualize the maximum payloads
+        marker_max_payloads = MarkerArray()
+        marker_label_payloads = MarkerArray()
+
+        # get the maximum payloads for each arm based on the valid configurations
+        max_payload_left, max_payload_right = self.robot.get_maximum_payloads(self.valid_configurations)
+
+        # Iterate through the valid configurations and create markers
+        for i, valid_config in enumerate(self.valid_configurations):
+            
+            # create the label for the end point (end effector position)
+            marker_point_name = Marker()
+            marker_point_name.header.frame_id = "base_link"
+            marker_point_name.header.stamp = self.get_clock().now().to_msg()
+
+            marker_point_name.ns = f"label_payloads_arm_{valid_config['arm']}"
+            marker_point_name.id = i
+            marker_point_name.type = Marker.TEXT_VIEW_FACING
+            marker_point_name.text = f"Config {i} \nMax payload : {valid_config['max_payload']:.2f} kg"
+            marker_point_name.action = Marker.ADD
+            marker_point_name.pose.position.x = valid_config["end_effector_pos"][0]
+            marker_point_name.pose.position.y = valid_config["end_effector_pos"][1]
+            marker_point_name.pose.position.z = valid_config["end_effector_pos"][2]
+            marker_point_name.pose.orientation.w = 1.0
+            marker_point_name.scale.x = 0.02
+            marker_point_name.scale.y = 0.02
+            marker_point_name.scale.z = 0.02
+            marker_point_name.color.a = 1.0  # Alpha
+            marker_point_name.color.r = 1.0  # Red
+            marker_point_name.color.g = 1.0  # Green
+            marker_point_name.color.b = 1.0  # Blue
+            
+            # get the joint positions for the valid configuration
+            joint_positions, offset_z = self.robot.get_joints_placements(valid_config["config"])
+
+            # get the normalized payload for the valid configuration with target as maximum payloads for each arm
+            if valid_config["arm"] == "left":
+                norm_payload = self.robot.get_normalized_payload(valid_config["max_payload"],max_payload_left)
+            else:
+                norm_payload = self.robot.get_normalized_payload(valid_config["max_payload"],max_payload_right)
+             
+            point = Marker()
+            point.header.frame_id = "base_link"
+            point.header.stamp = self.get_clock().now().to_msg()
+            point.ns = f"max_payloads_arm_{valid_config['arm']}"
+            point.id = i
+            point.type = Marker.SPHERE
+            point.action = Marker.ADD
+            point.scale.x = 0.03  # Size of the sphere
+            point.scale.y = 0.03
+            point.scale.z = 0.03
+            
+            point.pose.position.x = valid_config["end_effector_pos"][0]
+            point.pose.position.y = valid_config["end_effector_pos"][1]
+            point.pose.position.z = valid_config["end_effector_pos"][2] - offset_z
+            point.pose.orientation.w = 1.0
+            point.color.a = 1.0  # Alpha
+            point.color.r = norm_payload  # Red
+            point.color.g = 1 - norm_payload  # Green
+            point.color.b = 0.0  # Blue
+            
+            # Add the point to the points array
+            marker_max_payloads.markers.append(point)
+            
+            # Add the marker point name to the marker point names array
+            marker_max_payloads.markers.append(marker_point_name)
+
+        # Publish the maximum payloads markers and labels
+        self.publisher_maximum_payloads.publish(marker_max_payloads)
+
 
     def clear_workspace_area_markers(self):
         """

@@ -445,16 +445,15 @@ class TorqueCalculator:
         :param configs: Array of configurations , format {"config", "end_effector_pos", "tau", "arm", "max_payload" }     
         """
         for config in configs:
-            config["max_payload"] = self.find_max_payload_binary_search(config, config["arm"], payload_min=0.0, payload_max=10, resolution=0.01)
+            config["max_payload"] = self.find_max_payload_binary_search(config, payload_min=0.0, payload_max=10, resolution=0.01)
         
         return configs
 
 
-    def find_max_payload_binary_search(self, config, arm, payload_min=0.0, payload_max=10.0, resolution=0.01):
+    def find_max_payload_binary_search(self, config, payload_min=0.0, payload_max=10.0, resolution=0.01):
         """
         Find the maximum payload for a given configuration using binary search.
         :param config: Configuration dictionary (must contain 'config' key).
-        :param arm: Arm name ('left' or 'right').
         :param payload_min: Minimum payload to test.
         :param payload_max: Maximum payload to test.
         :param resolution: Desired precision.
@@ -466,9 +465,9 @@ class TorqueCalculator:
 
         while high - low > resolution:
             mid_payload = (low + high) / 2
-            ext_forces = self.create_ext_force(mid_payload, f"arm_{arm}_7_joint", config["config"])
+            ext_forces = self.create_ext_force(mid_payload, f"arm_{config['arm']}_7_joint", config["config"])
             tau = self.compute_inverse_dynamics(config["config"], self.get_zero_velocity(), self.get_zero_acceleration(), extForce=ext_forces)
-            if self.check_effort_limits(tau, arm).all():
+            if self.check_effort_limits(tau, config['arm']).all():
                 max_valid = mid_payload
                 low = mid_payload
             else:
@@ -543,6 +542,19 @@ class TorqueCalculator:
 
         return max_torques_left, max_torques_right
 
+
+    def get_maximum_payloads(self, valid_configs : np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        """
+        Get the maximum payloads for all configuration in the left and right arm.
+        
+        :param valid_configs: Array of valid configurations with related torques in format: [{"config", "end_effector_pos, "tau", "arm", "max_payload"}].
+        :return: Tuple of arrays of maximum payloads for left and right arms.
+        """
+        
+        max_payload_left = max([config["max_payload"] for config in valid_configs if config["arm"] == "left"])
+        max_payload_right = max([config["max_payload"] for config in valid_configs if config["arm"] == "right"])
+
+        return max_payload_left, max_payload_right
             
         
 
@@ -571,9 +583,21 @@ class TorqueCalculator:
                 else:
                     norm_tau.append(0.0)
 
-
         return norm_tau
-    
+
+
+    def get_normalized_payload(self, payload : np.ndarray, target_payload : float) -> np.ndarray:
+        """
+        Normalize the torques vector to a unified scale.
+        
+        :param payload: Maximum payload for a configuration.
+        :param target_payload: Target payload to normalize the payload to.
+        :return: Normalized payload.
+        """
+        norm_payload = abs(payload) / target_payload
+
+        return norm_payload    
+
 
     def get_unified_configurations_torque(self, valid_configs : np.ndarray) -> np.ndarray | np.ndarray:
         """
