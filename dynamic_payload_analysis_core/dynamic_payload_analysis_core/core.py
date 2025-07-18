@@ -95,7 +95,7 @@ class TorqueCalculator:
     
         
 
-    def compute_inverse_dynamics(self, q : np.ndarray , qdot : np.ndarray, qddot : np.ndarray, extForce : np.ndarray[pin.Force] = None) -> np.ndarray:
+    def compute_inverse_dynamics(self, q : np.ndarray , qdot : np.ndarray, qddot : np.ndarray, extForce : np.ndarray = None) -> np.ndarray:
         """
         Compute the inverse dynamics torque vector.
         
@@ -119,7 +119,7 @@ class TorqueCalculator:
         return tau
     
 
-    def create_ext_force(self, masses : Union[float, np.ndarray] , frame_name : Union[str | np.ndarray], q : np.ndarray) -> np.ndarray[pin.Force]:
+    def create_ext_force(self, masses : Union[float, np.ndarray] , frame_name : Union[str | np.ndarray], q : np.ndarray) -> np.ndarray:
         """
         Create external forces vector based on the masses and frame ID.
         The resulting vector will contain the force applied to the specified frame and with the local orientation of the parent joint.
@@ -475,7 +475,7 @@ class TorqueCalculator:
 
         return max_valid
 
-    def compute_forward_dynamics_aba_method(self, q : np.ndarray, qdot : np.ndarray, tau : np.ndarray, extForce : np.ndarray[pin.Force] = None) -> np.ndarray:
+    def compute_forward_dynamics_aba_method(self, q : np.ndarray, qdot : np.ndarray, tau : np.ndarray, extForce : np.ndarray = None) -> np.ndarray:
         """
         Compute the forward dynamics acceleration vector with Articulated-Body algorithm(ABA).
         
