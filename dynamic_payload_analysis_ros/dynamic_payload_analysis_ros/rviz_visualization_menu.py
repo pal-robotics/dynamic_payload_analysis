@@ -24,7 +24,7 @@ import numpy as np
 from visualization_msgs.msg import Marker, MarkerArray
 from dynamic_payload_analysis_ros.menu_visual import MenuPayload
 from dynamic_payload_analysis_ros.menu_visual import TorqueVisualizationType
-
+from builtin_interfaces.msg import Time
 
 
 
@@ -82,13 +82,13 @@ class RobotDescriptionSubscriber(Node):
         self.selected_configuration = None
 
         # timer to compute the valid workspace area 
-        self.timer_workspace_calculation = self.create_timer(1, self.workspace_calculation)
+        self.timer_workspace_calculation = self.create_timer(1.0, self.workspace_calculation)
         # timer to publish the selected configuration in joint states
-        self.timer_publish_configuration = self.create_timer(2, self.publish_selected_configuration)
+        self.timer_publish_configuration = self.create_timer(2.0, self.publish_selected_configuration)
         # timer to calculate the external forces based on the checked frames in the menu
-        self.timer_update_checked_frames = self.create_timer(0.5, self.update_checked_frames)
+        self.timer_update_checked_items = self.create_timer(0.5, self.update_checked_items)
         # timer to publish the external forces as arrows in RViz
-        self.timer_publish_force = self.create_timer(1, self.publish_payload_force)
+        self.timer_publish_force = self.create_timer(1.0, self.publish_payload_force)
 
         self.get_logger().info('Robot description subscriber node started')
 
@@ -108,6 +108,10 @@ class RobotDescriptionSubscriber(Node):
         # Add the frame to the menu for payload selection
         for frame in self.robot.get_active_frames():
             self.menu.insert_frame(frame)
+        
+        # Add subtree to the menu 
+        for i, subtree in enumerate(self.robot.get_subtrees()):
+            self.menu.insert_subtree(subtree['tree_id'], subtree["joint_names"], subtree["joint_ids"])
 
         # self.robot.print_configuration()
 
@@ -166,7 +170,9 @@ class RobotDescriptionSubscriber(Node):
         """
         # if the user choose to compute the workspace area then compute the valid configurations
         if self.menu.get_workspace_state():
-            self.valid_configurations = self.robot.get_valid_workspace(2, 0.20, "arm_left_7_joint", "arm_right_7_joint", self.masses, self.checked_frames)
+            # TODO : Change parameters to be more general: instead of names, use selected joints of the 
+            # checkbox menu for the subtree
+            self.valid_configurations = self.robot.get_valid_workspace(2, 0.20, self.masses, self.checked_frames)
 
             # compute the maximum payloads for the valid configurations
             self.valid_configurations = self.robot.compute_maximum_payloads(self.valid_configurations)
@@ -220,9 +226,9 @@ class RobotDescriptionSubscriber(Node):
                 self.publisher_joint_states.publish(joint_state)
 
     
-    def update_checked_frames(self):
+    def update_checked_items(self):
         """
-        Function to update the external forces based on the checked frames in the menu.    
+        Function to update the external forces based on the checked frames in the menu and joint selection in the subtree menu.   
         """
         # create the array with only the checked frames (with external force applied)
         self.checked_frames = np.array([check_frame["name"] for check_frame in self.menu.get_item_state() if check_frame['checked']])
@@ -233,6 +239,12 @@ class RobotDescriptionSubscriber(Node):
         else:
             # if there are no checked frames, set the masses to None
             self.masses = None
+
+        selected_joint_ids = [[joint["tree"], joint["selected_joint_id"]] for joint in self.menu.get_joint_tree_selection()]
+        for tree_id, joint_id in selected_joint_ids:
+            # set the joint tree selection in the robot based on the selected joints in the menu
+            self.robot.set_joint_tree_selection(tree_id, joint_id)
+        
 
 
     def joint_states_callback(self, msg):
@@ -299,7 +311,7 @@ class RobotDescriptionSubscriber(Node):
             if "gripper" not in joint['name']:
                 marker = Marker()
                 marker.header.frame_id = "base_link"
-                marker.header.stamp = self.get_clock().now().to_msg()
+                marker.header.stamp = Time()
                 marker.ns = "torque_visualization"
                 marker.id = i
                 marker.type = Marker.TEXT_VIEW_FACING
@@ -344,7 +356,7 @@ class RobotDescriptionSubscriber(Node):
 
         # calculate the maximum torques for each joint in the current valid configurations for each arm only if the user selected the max current torque visualization
         if self.menu.get_torque_color() == TorqueVisualizationType.MAX_CURRENT_TORQUE:
-            max_torque_for_joint_left, max_torque_for_joint_right = self.robot.get_maximum_torques(self.valid_configurations)
+            max_torque_for_joint = self.robot.get_maximum_torques(self.valid_configurations)
         
         cont = 0
         # Iterate through the valid configurations and create markers
@@ -353,9 +365,9 @@ class RobotDescriptionSubscriber(Node):
             # create the label for the end point (end effector position) of the valid configuration
             marker_point_name = Marker()
             marker_point_name.header.frame_id = "base_link"
-            marker_point_name.header.stamp = self.get_clock().now().to_msg()
+            marker_point_name.header.stamp = Time()
 
-            marker_point_name.ns = f"workspace_area_{valid_config['arm']}_arm"
+            marker_point_name.ns = f"workspace_area__tree_{valid_config['tree_id']}"
             marker_point_name.id = i + 1 
             marker_point_name.type = Marker.TEXT_VIEW_FACING
             marker_point_name.text = f"Config {i}"
@@ -380,15 +392,13 @@ class RobotDescriptionSubscriber(Node):
                 norm_joints_torques = self.robot.get_normalized_torques(valid_config["tau"])
             else:
                 # if the user selected the max torque, use the maximum torques for the joint
-                if valid_config["arm"] == "left":
-                    norm_joints_torques = self.robot.get_normalized_torques(valid_config["tau"],max_torque_for_joint_left)
-                else:
-                    norm_joints_torques = self.robot.get_normalized_torques(valid_config["tau"],max_torque_for_joint_right)
+                norm_joints_torques = self.robot.get_normalized_torques(valid_config["tau"],max_torque_for_joint, valid_config["tree_id"])
             
             # insert points related to the end effector position in the workspace area and with color based on the normalized torques for each joint
             for joint_pos,tau in zip(joint_positions,norm_joints_torques):
                 # print only the points for the corrisponding arm, in this way we can visualize the workspace area for each arm separately and avoid confusion
-                if valid_config["arm"] in joint_pos["name"] : 
+                # TODO 
+                if self.robot.verify_member_tree(valid_config["tree_id"],joint_pos["id"]): 
                     point = Marker()
                     point.header.frame_id = "base_link"
                     point.header.stamp = self.get_clock().now().to_msg()
@@ -426,8 +436,8 @@ class RobotDescriptionSubscriber(Node):
         for i, unified_config in enumerate(unified_configurations_torque):
             marker_point = Marker()
             marker_point.header.frame_id = "base_link"
-            marker_point.header.stamp = self.get_clock().now().to_msg()
-            marker_point.ns = f"unified_torque_workspace_{unified_config['arm']}_arm"
+            marker_point.header.stamp = Time()
+            marker_point.ns = f"unified_torque_workspace_tree_{unified_config['tree_id']}"
             marker_point.id = i
             marker_point.type = Marker.SPHERE
             marker_point.action = Marker.ADD
@@ -463,7 +473,7 @@ class RobotDescriptionSubscriber(Node):
         marker_label_payloads = MarkerArray()
 
         # get the maximum payloads for each arm based on the valid configurations
-        max_payload_left, max_payload_right = self.robot.get_maximum_payloads(self.valid_configurations)
+        max_payloads = self.robot.get_maximum_payloads(self.valid_configurations)
 
         # Iterate through the valid configurations and create markers
         for i, valid_config in enumerate(self.valid_configurations):
@@ -473,7 +483,7 @@ class RobotDescriptionSubscriber(Node):
             marker_point_name.header.frame_id = "base_link"
             marker_point_name.header.stamp = self.get_clock().now().to_msg()
 
-            marker_point_name.ns = f"label_payloads_arm_{valid_config['arm']}"
+            marker_point_name.ns = f"label_payloads_tree_{valid_config['tree_id']}"
             marker_point_name.id = i
             marker_point_name.type = Marker.TEXT_VIEW_FACING
             marker_point_name.text = f"Config {i} \nMax payload : {valid_config['max_payload']:.2f} kg"
@@ -493,16 +503,15 @@ class RobotDescriptionSubscriber(Node):
             # get the joint positions for the valid configuration
             joint_positions, offset_z = self.robot.get_joints_placements(valid_config["config"])
 
-            # get the normalized payload for the valid configuration with target as maximum payloads for each arm
-            if valid_config["arm"] == "left":
-                norm_payload = self.robot.get_normalized_payload(valid_config["max_payload"],max_payload_left)
-            else:
-                norm_payload = self.robot.get_normalized_payload(valid_config["max_payload"],max_payload_right)
+            # get the normalized payload for the valid configuration with target as maximum payloads for each tree
+            max_payload_for_tree = next(payload["max_payload"] for payload in max_payloads if payload["tree_id"] == valid_config["tree_id"])
+            norm_payload = self.robot.get_normalized_payload(valid_config["max_payload"], max_payload_for_tree)
+            
              
             point = Marker()
             point.header.frame_id = "base_link"
             point.header.stamp = self.get_clock().now().to_msg()
-            point.ns = f"max_payloads_arm_{valid_config['arm']}"
+            point.ns = f"max_payloads_tree_{valid_config['tree_id']}"
             point.id = i
             point.type = Marker.SPHERE
             point.action = Marker.ADD
