@@ -38,6 +38,9 @@ class MenuPayload():
         # array to store the checked orunchecked frames and payload selection
         self.frames_selection = np.array([],dtype=object)
 
+        # array to store the selected frame in the subtree menu
+        self.subtree_selection = np.array([], dtype=object)
+
         # create handler for menu
         self.menu_handler = MenuHandler()
 
@@ -97,7 +100,47 @@ class MenuPayload():
         # apply changes
         self.menu_handler.reApply(self.server)
         self.server.applyChanges()
+
     
+    def insert_subtree(self, tree_identifier : str, joint_names : np.ndarray, joint_ids : np.ndarray):
+        """
+        Insert a new item(subtree) in the checkbox menu of frames.
+
+        Args:
+            name (str) : name of the subtree  
+        """
+        last_item = self.menu_handler.insert(f"Tree {tree_identifier}",command= str(tree_identifier), callback=self.callback_tree_selection)
+        self.menu_handler.setCheckState(last_item, MenuHandler.UNCHECKED)
+        self.menu_handler.setVisible(last_item, True)
+
+        joints_list = np.array([], dtype=object)
+
+        
+        for joint_name,id in zip(joint_names, joint_ids):
+            # insert the joint as a sub-menu of the subtree
+            last_entry = self.menu_handler.insert(f"{joint_name}", parent=last_item, command=str(last_item), callback=self.callback_joint_tree_selection)
+            self.menu_handler.setCheckState(last_entry, MenuHandler.UNCHECKED)
+            self.menu_handler.setVisible(last_entry, True)
+            joints_list = np.append(joints_list,{"joint_name" : joint_name, "joint_id" : id})
+        
+        self.subtree_selection = np.append(self.subtree_selection, {"tree" : tree_identifier, "joints" : joints_list, "selected_joint_id": None})
+
+        # apply changes
+        self.menu_handler.reApply(self.server)
+        self.server.applyChanges()
+    
+
+    def callback_tree_selection(self, feedback):
+        """
+        Callback for the tree selection, Made only to avoid the error of missing callback.
+        
+        Args:
+            feedback: Feedback from the menu selection.
+        """
+        pass
+                
+
+
     def callback_label(self, feedback):
         """
         Callback for the label of color selection. Made only to avoid the error of missing callback.
@@ -106,6 +149,56 @@ class MenuPayload():
             feedback: Feedback from the menu selection.
         """
         pass
+
+    def callback_joint_tree_selection(self, feedback):
+        """
+        Callback for the joint selection in the subtree to change the selection of the joints.
+        
+        Args:
+            feedback: Feedback from the menu selection.
+        """
+        # get the handle of the selected item (id)
+        handle = feedback.menu_entry_id
+        # get the title of the selected item (it contains joint name)
+        title = self.menu_handler.getTitle(handle)
+
+         # get the entry object from the menu handler with all the informations about the item (command field is used to store the parent id)
+        config_context = self.menu_handler.entry_contexts_[handle]
+
+        # get the parent id of the selected joint stored in the command field (parent == tree identifier)
+        parent_id = int(config_context.command)
+        # get the entry object of the parent
+        parent_context = self.menu_handler.entry_contexts_[parent_id]
+        
+        # reset all the selections in the tree sub-menu if the joint was already selected
+        if self.menu_handler.getCheckState(handle) == MenuHandler.CHECKED:
+            parent_context.check_state = MenuHandler.UNCHECKED
+            self.menu_handler.setCheckState(handle, MenuHandler.UNCHECKED)
+
+            self.update_joint_tree_selection(int(parent_context.command), title, False)
+        else:
+            # set the checkbox as checked
+            parent_context.check_state = MenuHandler.CHECKED
+            
+            # reset all the selections in the tree sub-menu
+            # check if a item is already checked, if so remove it and set to unchecked to prevent multiple joint selection in the same menu
+            for item in parent_context.sub_entries:
+                # check if the item is checked
+                if self.menu_handler.getCheckState(item) == MenuHandler.CHECKED:
+                    # if the configuration is already checked, we need to uncheck it
+                    self.menu_handler.setCheckState(item, MenuHandler.UNCHECKED)
+            
+            # set the selected configuration checkbox as checked
+            self.menu_handler.setCheckState(handle, MenuHandler.CHECKED)
+
+            # set the joint as checked
+            self.update_joint_tree_selection(int(parent_context.command), title, True)
+
+        # apply changes
+        self.menu_handler.reApply(self.server)
+        self.server.applyChanges()
+
+
 
     def callback_color_selection(self, feedback):
         """
@@ -157,6 +250,7 @@ class MenuPayload():
 
         for i, item in enumerate(configuration):
             # insert the parent in the command field to keep track of the parent id
+            # TODO 6) : change arm to subtree identifier
             last_entry = self.menu_handler.insert(f"Configuration {i} | arm: " + item["arm"] + " | max payload : " + f"{item['max_payload']:.2f} kg" , parent=self.workspace_button, command=str(self.workspace_button), callback=self.callback_configuration_selection)
             self.menu_handler.setCheckState(last_entry, MenuHandler.UNCHECKED)
             self.menu_handler.setVisible(last_entry, True)
@@ -317,6 +411,25 @@ class MenuPayload():
         # reset the selected configuration
         self.selected_configuration = None
     
+
+    def update_joint_tree_selection(self,tree_identifier: int, joint_name : str, value: bool):
+        """
+        Update the state of a joint in the subtree menu.
+        
+        Args:
+            tree_identifier (int): Identifier of the subtree.
+            joint_name (str): Name of the joint to update.
+            joint_id (np.ndarray): ID of the joint to update.
+            value (bool): New state of the joint (checked or unchecked).
+        """
+        
+        for item in self.subtree_selection:
+            if item['tree'] == tree_identifier:
+                for joint in item['joints']:
+                    if joint['joint_name'] == joint_name:
+                        item['selected_joint_id'] = joint['joint_id']
+                        break
+
 
     def update_item(self, name, check: bool):
         """
