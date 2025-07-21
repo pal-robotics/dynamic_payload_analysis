@@ -72,9 +72,13 @@ class MenuPayload():
         self.torque_limits_checker = self.menu_handler.insert('Torque limits',command=str(TorqueVisualizationType.TORQUE_LIMITS.value) , callback=self.callback_color_selection)
         self.max_torque_checker = self.menu_handler.insert('Max torque', command=str(TorqueVisualizationType.MAX_CURRENT_TORQUE.value) , callback=self.callback_color_selection)
 
+        # set visible false for the torque limits and max torque checkboxes, they will be displayed only when configurations are inserted in the menu
         self.menu_handler.setVisible(self.torque_limits_checker, False)
         self.menu_handler.setVisible(self.max_torque_checker, False)
         self.menu_handler.setVisible(self.label_color_selection, False)
+
+        # label for tree selection
+        self.label_tree_selection = self.menu_handler.insert('Select end effector point for each tree :', callback=self.callback_tree_selection)
         
 
         self.make_menu_marker('menu_frames')
@@ -115,7 +119,6 @@ class MenuPayload():
 
         joints_list = np.array([], dtype=object)
 
-        
         for joint_name,id in zip(joint_names, joint_ids):
             # insert the joint as a sub-menu of the subtree
             last_entry = self.menu_handler.insert(f"{joint_name}", parent=last_item, command=str(last_item), callback=self.callback_joint_tree_selection)
@@ -139,7 +142,6 @@ class MenuPayload():
         """
         pass
                 
-
 
     def callback_label(self, feedback):
         """
@@ -175,7 +177,7 @@ class MenuPayload():
             parent_context.check_state = MenuHandler.UNCHECKED
             self.menu_handler.setCheckState(handle, MenuHandler.UNCHECKED)
 
-            self.update_joint_tree_selection(int(parent_context.command), title, False)
+            self.update_joint_tree_selection(int(parent_context.command), title)
         else:
             # set the checkbox as checked
             parent_context.check_state = MenuHandler.CHECKED
@@ -192,7 +194,7 @@ class MenuPayload():
             self.menu_handler.setCheckState(handle, MenuHandler.CHECKED)
 
             # set the joint as checked
-            self.update_joint_tree_selection(int(parent_context.command), title, True)
+            self.update_joint_tree_selection(int(parent_context.command), title)
 
         # apply changes
         self.menu_handler.reApply(self.server)
@@ -412,7 +414,7 @@ class MenuPayload():
         self.selected_configuration = None
     
 
-    def update_joint_tree_selection(self,tree_identifier: int, joint_name : str, value: bool):
+    def update_joint_tree_selection(self, tree_identifier: int, joint_name : str):
         """
         Update the state of a joint in the subtree menu.
         
@@ -426,8 +428,11 @@ class MenuPayload():
         for item in self.subtree_selection:
             if item['tree'] == tree_identifier:
                 for joint in item['joints']:
-                    if joint['joint_name'] == joint_name:
+                    if joint['joint_name'] == joint_name and item['selected_joint_id'] != joint['joint_id']:
                         item['selected_joint_id'] = joint['joint_id']
+                        break
+                    elif joint['joint_name'] == joint_name and item['selected_joint_id'] == joint['joint_id']:
+                        item['selected_joint_id'] = None
                         break
 
 
@@ -522,6 +527,14 @@ class MenuPayload():
         self.menu_handler.reApply(self.server)
         self.server.applyChanges()
 
+    def get_joint_tree_selection(self) -> np.ndarray:
+        """
+        Return the selected joint in the subtree menu.
+        
+        Returns:
+            np.ndarray: Array of selected joints in the subtree menu.
+        """
+        return self.subtree_selection
 
     def get_torque_color(self) -> TorqueVisualizationType:
         """
