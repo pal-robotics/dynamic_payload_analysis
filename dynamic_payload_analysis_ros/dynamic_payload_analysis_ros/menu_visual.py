@@ -77,6 +77,9 @@ class MenuPayload():
         self.menu_handler.setVisible(self.max_torque_checker, False)
         self.menu_handler.setVisible(self.label_color_selection, False)
 
+        # set the visibility of the workspace button to false, it will be displayed only when the user selects at least one tree
+        self.menu_handler.setVisible(self.workspace_button, False)
+        
         # label for tree selection
         self.label_tree_selection = self.menu_handler.insert('Select end effector point for each tree :', callback=self.callback_tree_selection)
         
@@ -159,6 +162,10 @@ class MenuPayload():
         Args:
             feedback: Feedback from the menu selection.
         """
+
+        # reset the sub-menu configuration if the user change joint selection 
+        self.reset_sub_menu_configuration()
+
         # get the handle of the selected item (id)
         handle = feedback.menu_entry_id
         # get the title of the selected item (it contains joint name)
@@ -195,6 +202,14 @@ class MenuPayload():
 
             # set the joint as checked
             self.update_joint_tree_selection(int(parent_context.command), title)
+        
+        # check if there is at least one joint selected in the subtree menu
+        if self.get_status_joint_tree():
+            # set the workspace button visible if there is at least one joint selected in the subtree menu
+            self.menu_handler.setVisible(self.workspace_button, True)
+        else:
+            # hide the workspace button if there is no joint selected in the subtree menu
+            self.menu_handler.setVisible(self.workspace_button, False)
 
         # apply changes
         self.menu_handler.reApply(self.server)
@@ -250,10 +265,13 @@ class MenuPayload():
             configuration (np.ndarray): Array of configuration to be displayed in the dropdown.
         """
 
+        if configuration.size == 0:
+            return
+
         for i, item in enumerate(configuration):
             # insert the parent in the command field to keep track of the parent id
             # TODO 6) : change arm to subtree identifier
-            last_entry = self.menu_handler.insert(f"Configuration {i} | arm: " + item["arm"] + " | max payload : " + f"{item['max_payload']:.2f} kg" , parent=self.workspace_button, command=str(self.workspace_button), callback=self.callback_configuration_selection)
+            last_entry = self.menu_handler.insert(f"Configuration {i} | tree: {item['tree_id']} | max payload : " + f"{item['max_payload']:.2f} kg" , parent=self.workspace_button, command=str(self.workspace_button), callback=self.callback_configuration_selection)
             self.menu_handler.setCheckState(last_entry, MenuHandler.UNCHECKED)
             self.menu_handler.setVisible(last_entry, True)
         
@@ -319,39 +337,29 @@ class MenuPayload():
             if item['checked']:
                 item = {"name": item['name'], "checked": False, "payload": 0.0}
                 self.frames_selection[i] = item
-                
-        # reset the frames selection menu (i = number of entry, item = object with name, sub entries, etc.)
-        for i, item in self.menu_handler.entry_contexts_.items():
-            if i == 1:
-                # skip the root item (payload reset)
-                continue
+        
+        
+        self.reset_sub_menu_configuration()
+
+        for item in self.menu_handler.entry_contexts_[self.root_frames].sub_entries:
+            for sub_item in self.menu_handler.entry_contexts_[item].sub_entries:
+                self.menu_handler.setVisible(sub_item, False)
+                self.menu_handler.setCheckState(sub_item, MenuHandler.UNCHECKED)
             
-            # check if the item(frame) has sub entries (payloads selection)
-            if item.sub_entries:
-                # if the frame has payloads selection, we need to remove it
-                for sub_item in item.sub_entries:
-                    self.menu_handler.setVisible(sub_item, False)
-                    self.menu_handler.setCheckState(sub_item, MenuHandler.UNCHECKED)
-            
-             # check if the item is the reset payloads or compute workspace item and skip the unchanging of the check state
-            if item.title == self.menu_handler.getTitle(self.reset) or item.title == self.menu_handler.getTitle(self.workspace_button):
-                continue
-                
-            if item.title == self.menu_handler.getTitle(self.label_color_selection):
-                self.menu_handler.setVisible(self.label_color_selection, False)
-                continue
-            
-            # set the checked of frame to unchecked 
-            self.menu_handler.setCheckState(i,MenuHandler.UNCHECKED)
+            if item != self.reset:
+                # set the checked of frame to unchecked 
+                self.menu_handler.setCheckState(item,MenuHandler.UNCHECKED)
+        
         
         # reset the selected configuration
         self.selected_configuration = None
-
-        # hide the torque limits and max torque checkboxes when there is no configuration selected
+        
+        #hide the torque limits and max torque checkboxes when there is no configuration selected
+        self.menu_handler.setVisible(self.label_color_selection, False)
         self.menu_handler.setVisible(self.torque_limits_checker, False)
         self.menu_handler.setVisible(self.max_torque_checker, False)
 
-        self.torque_color = TorqueVisualizationType.TORQUE_LIMITS  # reset to default torque limits
+        self.torque_color = TorqueVisualizationType.TORQUE_LIMITS  # reset to default torque limits#
 
         # reapply the menu handler and server changes
         self.menu_handler.reApply(self.server)
@@ -414,6 +422,17 @@ class MenuPayload():
         self.selected_configuration = None
     
 
+    def get_status_joint_tree(self) -> bool:
+        """
+        Check if there is at least one joint selected in the subtree menu.
+        
+        Returns:
+            bool: True if at least one joint is selected, False otherwise.
+        """
+        for item in self.subtree_selection:
+            if item['selected_joint_id'] is not None:
+                return True
+
     def update_joint_tree_selection(self, tree_identifier: int, joint_name : str):
         """
         Update the state of a joint in the subtree menu.
@@ -421,8 +440,6 @@ class MenuPayload():
         Args:
             tree_identifier (int): Identifier of the subtree.
             joint_name (str): Name of the joint to update.
-            joint_id (np.ndarray): ID of the joint to update.
-            value (bool): New state of the joint (checked or unchecked).
         """
         
         for item in self.subtree_selection:
