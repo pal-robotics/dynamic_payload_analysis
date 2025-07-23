@@ -581,25 +581,32 @@ class TorqueCalculator:
         :param valid_configs: Array of valid configurations with related torques in format: [{"config", "end_effector_pos, "tau"}].
         :return: Arrays of maximum torques for each joint in the current valid configurations for selected trees.
         """
-        # TODO : Change variable names
-        # Get the number of joints
         
+        # Get the number of joints
         num_joints = len(valid_configs[0]["tau"])
-        max_torques = np.array([], dtype=float)
-        joint_torques = np.array([], dtype=object)
-        abs_torques = np.array([], dtype=object)
-
+        
+        # array to store the absolute torques for each joint in the current valid configurations for each selected tree
+        abs_joint_torques = np.array([], dtype=object)
+        
+        # get the selected trees from the sub_trees
         selected_trees = [tree for tree in self.sub_trees if tree["selected_joint_id"] is not None]
-        # Find maximum absolute torque for each joint
+        
+        # create an array to store the absolute torques for each joint in the current valid configurations for each selected tree
         for tree in selected_trees:
+            # array to store the absolute torques for each joint in the current tree
+            abs_torques = np.array([], dtype=object)
+            
             for i in range(num_joints):
                 # Get the joint torques for the current tree
-                abs_torques = np.append(abs_torques ,{"abs": [abs(config["tau"][i]) for config in valid_configs if config["tree_id"] == tree["tree_id"]]})
+                abs_torques = np.append(abs_torques ,{"joint" : i ,"abs": [abs(config["tau"][i]) for config in valid_configs if config["tree_id"] == tree["tree_id"]]})
 
-            joint_torques = np.append(joint_torques, {"tree_id": tree["tree_id"], "abs_torques": abs_torques})
+            abs_joint_torques = np.append(abs_joint_torques, {"tree_id": tree["tree_id"], "abs_torques": abs_torques})
             
-        
-        for torques in joint_torques:
+        # array to store the maximum absolute torques for each joint in the current valid configurations
+        max_torques = np.array([], dtype=float)
+
+        # get the maximum absolute torques for each joint in the current valid configurations for each selected tree
+        for torques in abs_joint_torques:
             max_tau = np.array([], dtype=object)
             # Get the maximum absolute torque for the current joint
             for tau in torques["abs_torques"]:
