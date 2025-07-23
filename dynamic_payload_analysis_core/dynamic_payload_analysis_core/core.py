@@ -75,7 +75,7 @@ class TorqueCalculator:
 
         # create items for each tree in the robot model
         for tree in self.sub_trees:
-            self.configurations = np.append(self.configurations, {"tree_id": tree["tree_id"], "configurations": None, "joint_selected_id" : None})
+            self.configurations = np.append(self.configurations, {"tree_id": tree["tree_id"], "configurations": None, "selected_joint_id" : None})
 
 
     def compute_static_collisions(self):
@@ -280,7 +280,7 @@ class TorqueCalculator:
 
 
 
-    def compute_inverse_kinematics(self, q : np.ndarray, end_effector_position: np.ndarray, end_effector_name : str) -> np.ndarray:
+    def compute_inverse_kinematics(self, q : np.ndarray, end_effector_position: np.ndarray, joint_id : str) -> np.ndarray:
         """
         Compute the inverse kinematics for the robot model with joint limits consideration.
         :param q: current joint configuration vector.
@@ -288,8 +288,6 @@ class TorqueCalculator:
         :param end_effector_name: Name of the end effector joint.
         :return: Joint configuration vector that achieves the desired end effector position.
         """
-
-        joint_id = self.model.getJointId(end_effector_name)  # Get the joint ID of the end effector
 
         # Set parameters for the inverse kinematics solver
         eps = 1e-3 # reduce for more precision
@@ -347,13 +345,13 @@ class TorqueCalculator:
         
             
 
-    def compute_all_configurations(self, range : int, resolution : int) -> np.ndarray:
+    def compute_all_configurations(self, range : int, resolution : int, end_joint_id) -> np.ndarray:
         """
         Compute all configurations for the robot model within a specified range.
         
         :param range (int): Range as side of a square where in the center there is the actual position of end effector.
         :param resolution (int): Resolution of the grid to compute configurations.
-        :param end_effector_name (str): Name of the end effector joint.
+        :param end_joint_id (str): Id of the end effector joint selected in the tree.
         :return : Array of joint configurations that achieve the desired end effector position.
         """
         
@@ -375,7 +373,7 @@ class TorqueCalculator:
             for y in np.arange(-range/2, range/2 , resolution):
                 for z in np.arange(0, range , resolution):
                     target_position = pin.SE3(np.eye(3), np.array([x, y, z]))
-                    new_q = self.compute_inverse_kinematics(q, target_position, end_effector_name)
+                    new_q = self.compute_inverse_kinematics(q, target_position, end_joint_id)
                      
                     if new_q is not None:
                         q = new_q
@@ -386,20 +384,22 @@ class TorqueCalculator:
     
 
 
-    def verify_configurations(self, configurations_left : np.ndarray, configurations_right : np.ndarray, masses : np.ndarray, checked_frames : np.ndarray) -> np.ndarray:
+    def verify_configurations(self, configurations: np.ndarray, masses : np.ndarray, checked_frames : np.ndarray, tree_id: int, selected_joint_id: int) -> np.ndarray:
         """
         Verify the configurations to check if they are valid.
         
-        :param configurations_left: Array of joint configurations to verify for the left arm.
-        :param configurations_right: Array of joint configurations to verify for the right arm.
-        :param ext_forces: Array of external forces to apply to the robot model.
+        :param configurations: Array of joint configurations to verify for the left arm.
+        :param masses (np.ndarray): Array of masses to apply to the robot model.
+        :param checked_frames (np.ndarray): Array of frame names where the external forces are applied.
+        :param tree_id (int): Identifier of the tree to verify the configurations for.
+        :param selected_joint_id (int): Identifier of the selected joint in the tree to verify the configurations for.
         :return: Array of valid configurations with related torques in format: [{"config", "end_effector_pos, "tau"}].
         """
         
         valid_configurations = []
         
         # check valid configurations for left arm
-        for q in configurations_left:
+        for q in configurations:
             # Update the configuration of the robot model
             self.update_configuration(q["config"])
             
@@ -413,7 +413,7 @@ class TorqueCalculator:
                 tau = self.compute_inverse_dynamics(q["config"], self.get_zero_velocity(), self.get_zero_acceleration())
 
             # Check if the torques are within the effort limits # TODO 2) : change it to calculate the efort limits of the subtree 
-            if self.check_effort_limits(tau,"left").all():
+            if self.check_effort_limits(tau= tau, tree_id= tree_id).all():
                 valid = True
                 # Compute all the collisions
                 pin.computeCollisions(self.model, self.data, self.geom_model, self.geom_data, q["config"], False)
@@ -430,41 +430,8 @@ class TorqueCalculator:
                 
                 if valid:
                     # TODO 4) : change arm to subtree identifier
-                    valid_configurations.append({"config" : q["config"], "end_effector_pos" : q["end_effector_pos"], "tau" : tau, "arm" : "left" })
+                    valid_configurations.append({"config" : q["config"], "end_effector_pos" : q["end_effector_pos"], "tau" : tau, "tree_id" : tree_id,"selected_joint_id": selected_joint_id})
 
-        # check valid configurations for right arm
-        for q in configurations_right:
-            # Update the configuration of the robot model
-            self.update_configuration(q["config"])
-            
-            if masses is not None and checked_frames is not None:
-                # Create external forces based on the masses and checked frames
-                ext_forces = self.create_ext_force(masses, checked_frames, q["config"])
-                # Compute the inverse dynamics for the current configuration
-                tau = self.compute_inverse_dynamics(q["config"], self.get_zero_velocity(), self.get_zero_acceleration(),extForce=ext_forces)
-            else:
-                # Compute the inverse dynamics for the current configuration without external forces
-                tau = self.compute_inverse_dynamics(q["config"], self.get_zero_velocity(), self.get_zero_acceleration())
-
-            # Check if the torques are within the effort limits
-            if self.check_effort_limits(tau,"right").all():
-                valid = True
-                # Compute all the collisions
-                pin.computeCollisions(self.model, self.data, self.geom_model, self.geom_data, q["config"], False)
-
-                # Print the status of collision for all collision pairs
-                for k in range(len(self.geom_model.collisionPairs)):
-                    cr = self.geom_data.collisionResults[k]
-                    cp = self.geom_model.collisionPairs[k]
-
-                    if cr.isCollision() and (cp.first, cp.second, k) not in self.default_collisions:
-                        print(f"Collision detected between {cp.first} and {cp.second} in the right arm configuration.")
-                        valid = False
-                        break
-                
-                if valid:
-                    valid_configurations.append({"config" : q["config"], "end_effector_pos" : q["end_effector_pos"], "tau" : tau, "arm" : "right" })
-                
 
         return np.array(valid_configurations, dtype=object)
         
@@ -475,24 +442,22 @@ class TorqueCalculator:
         
         :param range (int): Range as side of a square where in the center there is the actual position of end effector.
         :param resolution (int): Resolution of the grid to compute configurations.
-        :param end_effector_name_left (str): Name of the end effector joint to test for the left arm.
-        :param end_effector_name_right (str): Name of the end effector joint to test for the right arm.
         :param masses (np.ndarray): Array of masses to apply to the robot model.
         :param checked_frames (np.ndarray): Array of frame names where the external forces are applied.
         :return: Array of valid configurations that achieve the desired end effector position in format: [{"config", "end_effector_pos, "tau", "arm"}].
         """
-        # compute all configurations for the selected trees
-        for tree in self.sub_trees:
-            pass
-
+        # compute all configurations for the selected joints of the trees
+        for tree,configuration in zip(self.sub_trees,self.configurations):
+            # if the configurations are not computed or the selected joint ID is not the same as in the tree, compute the configurations
+            if configuration["configurations"] == None or configuration["selected_joint_id"] != tree["selected_joint_id"]:
+                if tree["selected_joint_id"] is not None:
+                    # Compute all configurations for the current tree
+                    configuration["configurations"] = self.compute_all_configurations(range, resolution,tree["selected_joint_id"])
+                    # Set the selected joint ID to the current tree's selected joint ID
+                    configuration["selected_joint_id"] = tree["selected_joint_id"]
                 
-        if self.configurations is None:
-            # TODO 1) : Instead of end_effector_name_left and end_effector_name_right, use the checked names provided by the main trees object
-            # Compute all configurations
-            self.configurations = self.compute_all_configurations(range,resolution)
-
-        # Verify the configurations to check if they are valid for both arms
-        valid_configurations = self.verify_configurations(self.configurations_l,self.configurations_r, masses, checked_frames)
+                    # Verify the configurations to check if they are valid
+                    valid_configurations = self.verify_configurations(configuration["configurations"], masses, checked_frames, tree["tree_id"], tree["selected_joint_id"])
         
         return valid_configurations
     
@@ -524,9 +489,9 @@ class TorqueCalculator:
         while high - low > resolution:
             mid_payload = (low + high) / 2
             # TODO 5): remove hardcoded arm frame, use selected joint of the subtree submenu
-            ext_forces = self.create_ext_force(mid_payload, f"arm_{config['arm']}_7_joint", config["config"])
+            ext_forces = self.create_ext_force(mid_payload, self.get_joint_name(config["selected_joint_id"]), config["config"])
             tau = self.compute_inverse_dynamics(config["config"], self.get_zero_velocity(), self.get_zero_acceleration(), extForce=ext_forces)
-            if self.check_effort_limits(tau, config['arm']).all():
+            if self.check_effort_limits(tau, config['tree_id']).all():
                 max_valid = mid_payload
                 low = mid_payload
             else:
@@ -578,6 +543,19 @@ class TorqueCalculator:
         return J_frame
     
 
+    def verify_member_tree(self, tree_id: int, joint_id: int) -> bool:
+        """
+        Verify if the given joint ID is a member of the specified tree.
+        
+        :param tree_id: Identifier of the tree to verify.
+        :param joint_id: Identifier of the joint to verify.
+        :return: True if the joint is a member of the tree, False otherwise.
+        """
+        
+        # Check if the joint ID is in the list of joint IDs for the specified tree
+        return joint_id in self.sub_trees[tree_id]["joint_ids"]
+
+
     def get_subtrees(self) -> np.ndarray:
         """
         Get the sub-trees of the robot model.
@@ -592,41 +570,57 @@ class TorqueCalculator:
         Get the maximum torques for each joint in all valid configurations.
         
         :param valid_configs: Array of valid configurations with related torques in format: [{"config", "end_effector_pos, "tau"}].
-        :return: Arrays of maximum torques for each joint in the current valid configurations for left and right arm.
+        :return: Arrays of maximum torques for each joint in the current valid configurations for selected trees.
         """
-        
+        # TODO : Change variable names
         # Get the number of joints
         num_joints = len(valid_configs[0]["tau"])
-        max_torques_left = np.array([], dtype=float)
-        max_torques_right = np.array([], dtype=float)
+        max_torques = np.array([], dtype=float)
+        joint_torques = np.array([], dtype=object)
+        abs_torques = np.array([], dtype=object)
 
+        selected_trees = [tree for tree in self.sub_trees if tree["selected_joint_id"] is not None]
         # Find maximum absolute torque for each joint
-        for i in range(num_joints):
-            joint_torques_left = [abs(config["tau"][i]) for config in valid_configs if config["arm"] == "left"]
-            joint_torques_right = [abs(config["tau"][i]) for config in valid_configs if config["arm"] == "right"]
+        for tree in selected_trees:
+            for i in range(num_joints):
+                # Get the joint torques for the current tree
+                abs_torques = np.append(abs_torques ,{"abs": [abs(config["tau"][i]) for config in valid_configs if config["tree_id"] == tree["tree_id"]]})
+
+            joint_torques = np.append(joint_torques, {"tree_id": tree["tree_id"], "abs_torques": abs_torques})
             
-            max_torques_left = np.append( max_torques_left, max(joint_torques_left))
-            max_torques_right = np.append( max_torques_right, max(joint_torques_right))
+        
+        for torques in joint_torques:
+            max_tau = np.array([], dtype=object)
+            # Get the maximum absolute torque for the current joint
+            for tau in torques["abs_torques"]:
+                max_tau = np.append(max_tau, max(tau["abs"]))
+            
+            max_torques = np.append(max_torques, {"tree_id": torques["tree_id"], "max_values": max_tau})
+        
 
-        return max_torques_left, max_torques_right
+        return max_torques
 
 
-    def get_maximum_payloads(self, valid_configs : np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    def get_maximum_payloads(self, valid_configs : np.ndarray) -> np.ndarray:
         """
         Get the maximum payloads for all configuration in the left and right arm.
         
         :param valid_configs: Array of valid configurations with related torques in format: [{"config", "end_effector_pos, "tau", "arm", "max_payload"}].
         :return: Tuple of arrays of maximum payloads for left and right arms.
         """
-        
-        max_payload_left = max([config["max_payload"] for config in valid_configs if config["arm"] == "left"])
-        max_payload_right = max([config["max_payload"] for config in valid_configs if config["arm"] == "right"])
+        max_payloads = np.array([], dtype=float)
+        for tree in self.sub_trees:
+            payloads = [config["max_payload"] for config in valid_configs if config["tree_id"] == tree["tree_id"]]
+            if payloads:
+                max_payload = max(payloads)
+                max_payloads = np.append(max_payloads, {"tree_id": tree["tree_id"], "max_payload": max_payload})
 
-        return max_payload_left, max_payload_right
+        return max_payloads
             
-        
+    
+    
 
-    def get_normalized_torques(self, tau : np.ndarray, target_torque : np.ndarray = None) -> np.ndarray:
+    def get_normalized_torques(self, tau : np.ndarray, target_torque : np.ndarray = None, tree_id: int = None) -> np.ndarray:
         """
         Normalize the torques vector to a unified scale.
         
@@ -644,10 +638,12 @@ class TorqueCalculator:
             for i, torque in enumerate(tau):
                 norm_tau.append(abs(torque) / self.model.effortLimit[i])
         else:
+            # get the maximum values for the current tree
+            max_torque = next(item for item in target_torque if item["tree_id"] == tree_id)
             # Normalize the torques vector to the target torque
             for i, torque in enumerate(tau):
-                if target_torque[i] != 0:
-                    norm_tau.append(abs(torque) / target_torque[i])
+                if max_torque["max_values"][i] != 0:
+                    norm_tau.append(abs(torque) / max_torque["max_values"][i])
                 else:
                     norm_tau.append(0.0)
 
@@ -674,8 +670,12 @@ class TorqueCalculator:
         :param q: Joint configuration vector. 
         :param valid_configs: Array of 
         """
+
         torques_sum = np.array([], dtype=float)
         norm_torques = np.array([], dtype=float)
+
+        # array to store the maximum sum of torques for each tree
+        max_value_torques = np.array([], dtype=float)
         sum = 0.0
 
         for valid_config in valid_configs:
@@ -688,22 +688,33 @@ class TorqueCalculator:
                 #if abs(torque) < 50:
                 sum += abs(torque)
                 
-            torques_sum = np.append(torques_sum, {"sum" : sum, "end_effector_pos" : valid_config["end_effector_pos"], "arm" : valid_config["arm"]})
+            torques_sum = np.append(torques_sum, {"sum" : sum, "end_effector_pos" : valid_config["end_effector_pos"], "tree_id" : valid_config["tree_id"]})
             sum = 0.0  # reset the sum for the next configuration
 
-        # get the maximum torque from the sum of torques for both arms
-        max_torque_l = max([item["sum"] for item in torques_sum if item["arm"] == "left"])
-        max_torque_r = max([item["sum"] for item in torques_sum if item["arm"] == "right"])
+
+        # get the maximum torque from the sum of torques for all selected trees
+        for tree in self.sub_trees:
+            # Get all sum values for the current tree
+            tree_sums = [item["sum"] for item in torques_sum if item["tree_id"] == tree["tree_id"]]
+            
+            if tree_sums:  # Check if there are any sums for this tree
+                max_value = max(tree_sums)
+            else:
+                max_value = 0.0  # Default value if no sums found
+            
+            max_value_torques = np.append(max_value_torques, {"tree_id": tree["tree_id"], "max_value": max_value})
+
 
         # Normalize the torques vector to a unified scale
         for tau in torques_sum:
-            if tau["arm"] == "left":
-                norm_tau = tau["sum"] / max_torque_l
-            else:
-                norm_tau = tau["sum"] / max_torque_r
+           
+            # Find the corresponding max_value for the current tree_id
+            max_value = next(item["max_value"] for item in max_value_torques if item["tree_id"] == tau["tree_id"])
+            norm_tau = tau["sum"] / max_value
+
 
             # append the normalized torque to the array
-            norm_torques = np.append(norm_torques, {"norm_tau" : norm_tau, "end_effector_pos" : tau["end_effector_pos"], "arm" : tau["arm"]})
+            norm_torques = np.append(norm_torques, {"norm_tau" : norm_tau, "end_effector_pos" : tau["end_effector_pos"], "tree_id" : tau["tree_id"]})
 
         return norm_torques
     
@@ -804,12 +815,12 @@ class TorqueCalculator:
 
 
     # TODO 3) : change it, instead of arm name use sub tree identifier 
-    def check_effort_limits(self, tau : np.ndarray, arm : str = None) -> np.ndarray:
+    def check_effort_limits(self, tau : np.ndarray, tree_id : int = None) -> np.ndarray:
         """
         Check if the torques vector is within the effort limits of the robot model.
         
         :param tau: Torques vector to check.
-        :param arm: Arm name to filter the torques vector, right or left.
+        :param tree_id: Id of tree to filter control in the torques vector.
         :return: Array of booleans indicating if each joint is within the effort limits.
         """
         if tau is None:
@@ -819,7 +830,7 @@ class TorqueCalculator:
         within_limits = np.array([], dtype=bool)
 
         # if arm is not specified, check all joints
-        if arm is None:
+        if tree_id is None:
             # Check if the torques are within the limits
             for i in range(self.model.njoints -1): 
                 if abs(tau[i]) > self.model.effortLimit[i]:
@@ -832,15 +843,21 @@ class TorqueCalculator:
                 print("All joints are within effort limits. \n")
         
         else:
-            # Check if the torques are within the limits
-            for i in range(self.model.njoints -1):
-                # TODO arm is "left" or right" but the model has gripper with left and right in the same name
-                if arm in self.model.names[i+1]:
-                    if abs(tau[i]) > self.model.effortLimit[i]:
-                        print(f"\033[91mJoint {i+1} exceeds effort limit: {tau[i]} > {self.model.effortLimit[i]} \033[0m\n")
-                        within_limits = np.append(within_limits, False)
-                    else:
-                        within_limits = np.append(within_limits, True)
+            # Check if the torque of joints inside the tree is within the limits
+            for id in self.sub_trees[tree_id]["joint_ids"]:
+                if abs(tau[id]) > self.model.effortLimit[id]:
+                    print(f"\033[91mJoint {i+1} exceeds effort limit: {tau[i]} > {self.model.effortLimit[i]} \033[0m\n")
+                    within_limits = np.append(within_limits, False)
+                else:
+                    within_limits = np.append(within_limits, True)
+
+            # for i in range(self.model.njoints -1):
+            #     if arm in self.model.names[i+1]:
+            #         if abs(tau[i]) > self.model.effortLimit[i]:
+            #             print(f"\033[91mJoint {i+1} exceeds effort limit: {tau[i]} > {self.model.effortLimit[i]} \033[0m\n")
+            #             within_limits = np.append(within_limits, False)
+            #         else:
+            #             within_limits = np.append(within_limits, True)
             
             if np.all(within_limits):
                 print("All joints are within effort limits. \n")
@@ -939,13 +956,24 @@ class TorqueCalculator:
 
         self.update_configuration(q)
         placements = np.array([({"name" : self.model.names[i],
-                                 "type" : self.model.joints[i].shortname() , 
+                                 "type" : self.model.joints[i].shortname() ,
+                                 "id" : i,
                                  "x": self.data.oMi[i].translation[0], 
                                  "y": self.data.oMi[i].translation[1], 
                                  "z": self.data.oMi[i].translation[2]}) for i in range(1, self.model.njoints)], dtype=object)
         
         return placements, offset_z
     
+
+    def get_joint_name(self, id_joint: int) -> np.ndarray:
+        """
+        Get the name of the joint by its ID.
+        
+        :param id_joint: ID of the joint to get the name for.
+        :return: Name of the joint.
+        """
+
+        return self.model.names[id_joint]
 
     def get_joint_placement(self, joint_id : int) -> dict:
         """
