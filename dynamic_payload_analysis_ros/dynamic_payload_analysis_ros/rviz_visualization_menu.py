@@ -170,8 +170,6 @@ class RobotDescriptionSubscriber(Node):
         """
         # if the user choose to compute the workspace area then compute the valid configurations
         if self.menu.get_workspace_state():
-            # TODO : Change parameters to be more general: instead of names, use selected joints of the 
-            # checkbox menu for the subtree
             self.valid_configurations = self.robot.get_valid_workspace(2, 0.20, self.masses, self.checked_frames)
 
             # compute the maximum payloads for the valid configurations
@@ -307,7 +305,7 @@ class RobotDescriptionSubscriber(Node):
         """
         marker_array = MarkerArray()
         for i, (t, joint) in enumerate(zip(torque, joints_position)):
-            # remove the gripper joints from the visualization TODO: make it more general (with MIMIC joints)
+            # TODO : Visualize labels without overlaps
             if "gripper" not in joint['name']:
                 marker = Marker()
                 marker.header.frame_id = "base_link"
@@ -401,7 +399,7 @@ class RobotDescriptionSubscriber(Node):
                 if self.robot.verify_member_tree(valid_config["tree_id"],joint_pos["id"]): 
                     point = Marker()
                     point.header.frame_id = "base_link"
-                    point.header.stamp = self.get_clock().now().to_msg()
+                    point.header.stamp = Time()
                     point.ns = joint_pos["name"]
                     point.id = cont
                     point.type = Marker.SPHERE
@@ -481,7 +479,7 @@ class RobotDescriptionSubscriber(Node):
             # create the label for the end point (end effector position)
             marker_point_name = Marker()
             marker_point_name.header.frame_id = "base_link"
-            marker_point_name.header.stamp = self.get_clock().now().to_msg()
+            marker_point_name.header.stamp = Time()
 
             marker_point_name.ns = f"label_payloads_tree_{valid_config['tree_id']}"
             marker_point_name.id = i
@@ -490,7 +488,7 @@ class RobotDescriptionSubscriber(Node):
             marker_point_name.action = Marker.ADD
             marker_point_name.pose.position.x = valid_config["end_effector_pos"][0]
             marker_point_name.pose.position.y = valid_config["end_effector_pos"][1]
-            marker_point_name.pose.position.z = valid_config["end_effector_pos"][2]
+            marker_point_name.pose.position.z = valid_config["end_effector_pos"][2] + 0.05
             marker_point_name.pose.orientation.w = 1.0
             marker_point_name.scale.x = 0.02
             marker_point_name.scale.y = 0.02
@@ -510,7 +508,7 @@ class RobotDescriptionSubscriber(Node):
              
             point = Marker()
             point.header.frame_id = "base_link"
-            point.header.stamp = self.get_clock().now().to_msg()
+            point.header.stamp = Time()
             point.ns = f"max_payloads_tree_{valid_config['tree_id']}"
             point.id = i
             point.type = Marker.SPHERE
