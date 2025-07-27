@@ -303,9 +303,10 @@ class RobotDescriptionSubscriber(Node):
             status_torques (np.ndarray): The status of the torques, True if the torque is within the limits, False otherwise
             joints_position (np.ndarray): The positions of the joints where the torques are applied
         """
+        joint_z_prev = {"pos": 0.0, "labels_count": 0}  # Variable to store the previous z position of the joint for label offset
         marker_array = MarkerArray()
+
         for i, (t, joint) in enumerate(zip(torque, joints_position)):
-            # TODO : Visualize labels without overlaps
             if "gripper" not in joint['name']:
                 marker = Marker()
                 marker.header.frame_id = "base_link"
@@ -320,9 +321,18 @@ class RobotDescriptionSubscriber(Node):
                     marker.text = f"{joint['name']}: {t:.2f} Nm"
 
                 marker.action = Marker.ADD
+                
                 marker.pose.position.x = joint['x']
                 marker.pose.position.y = joint['y']
-                marker.pose.position.z = joint['z']
+
+                # method to avoid overlaps between labels 
+                if joint['z'] == joint_z_prev["pos"]:
+                    marker.pose.position.z = joint['z'] + 0.025 * joint_z_prev["labels_count"]  # Offset to avoid overlaps between labels
+                    joint_z_prev = {"pos" : joint['z'], "labels_count" : joint_z_prev["labels_count"] + 1}
+                else:
+                    marker.pose.position.z = joint['z']
+                    joint_z_prev = {"pos" : marker.pose.position.z, "labels_count" : 1}
+
                 marker.pose.orientation.w = 1.0
                 marker.scale.x = 0.03
                 marker.scale.y = 0.03
@@ -336,6 +346,8 @@ class RobotDescriptionSubscriber(Node):
                     marker.color.r = 1.0  # Red
                     marker.color.g = 0.0  # Green
                     marker.color.b = 0.0  # Blue
+                
+                
                 marker_array.markers.append(marker)
         
         self.publisher_rviz_torque.publish(marker_array)
