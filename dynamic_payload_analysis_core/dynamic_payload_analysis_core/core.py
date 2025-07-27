@@ -478,12 +478,12 @@ class TorqueCalculator:
         :param configs: Array of configurations , format {"config", "end_effector_pos", "tau", "arm", "max_payload" }     
         """
         for config in configs:
-            config["max_payload"] = self.find_max_payload_binary_search(config, payload_min=0.0, payload_max=10, resolution=0.01)
+            config["max_payload"] = self.find_max_payload_binary_search(config, payload_min=0.0, payload_max=15, resolution=0.01)
         
         return configs
 
 
-    def find_max_payload_binary_search(self, config, payload_min=0.0, payload_max=10.0, resolution=0.01):
+    def find_max_payload_binary_search(self, config : np.ndarray, payload_min : float = 0.0, payload_max : float = 10.0, resolution : float = 0.01):
         """
         Find the maximum payload for a given configuration using binary search.
         :param config: Configuration dictionary (must contain 'config' key).

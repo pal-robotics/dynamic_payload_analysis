@@ -270,7 +270,6 @@ class MenuPayload():
 
         for i, item in enumerate(configuration):
             # insert the parent in the command field to keep track of the parent id
-            # TODO 6) : change arm to subtree identifier
             last_entry = self.menu_handler.insert(f"Configuration {i} | tree: {item['tree_id']} | max payload : " + f"{item['max_payload']:.2f} kg" , parent=self.workspace_button, command=str(self.workspace_button), callback=self.callback_configuration_selection)
             self.menu_handler.setCheckState(last_entry, MenuHandler.UNCHECKED)
             self.menu_handler.setVisible(last_entry, True)
