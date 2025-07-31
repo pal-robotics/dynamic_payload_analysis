@@ -39,8 +39,12 @@ class TorqueCalculator:
 
         # Load the robot model from path or XML string
         if isinstance(robot_description, str):
-            self.model = pin.buildModelFromXML(robot_description)
+            self.model = pin.buildModelFromXML(robot_description, mimic= True)
             
+            self.mimic_joints = self.model.mimicking_joints.tolist()
+            self.mimic_joint_names = [self.model.names[joint_id] for joint_id in self.mimic_joints]
+
+            self.model = pin.buildModelFromXML(robot_description)
             # TODO change parser in general for more unique solution
             
             # create temporary URDF file from the robot description string
@@ -65,12 +69,8 @@ class TorqueCalculator:
         # get the default collisions in the robot model to avoid take them into account in the computations
         self.default_collisions = self.compute_static_collisions()
 
-
-        
-
         # compute main trees of the robot model
         self.compute_subtrees()
-
 
         # array to store all configurations for the robot model
         self.configurations = np.array([], dtype=object)
@@ -1009,7 +1009,6 @@ class TorqueCalculator:
         
         return mass_matrix
     
-
 
     def get_joints(self) -> np.ndarray:
         """

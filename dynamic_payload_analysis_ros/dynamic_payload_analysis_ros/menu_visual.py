@@ -109,14 +109,14 @@ class MenuPayload():
         self.server.applyChanges()
 
     
-    def insert_subtree(self, tree_identifier : str, joint_names : np.ndarray, joint_ids : np.ndarray):
+    def insert_subtree(self, tree_identifier : int,tip_tree_name : str, joint_names : np.ndarray, joint_ids : np.ndarray):
         """
         Insert a new item(subtree) in the checkbox menu of frames.
 
         Args:
             name (str) : name of the subtree  
         """
-        last_item = self.menu_handler.insert(f"Tree: [{tree_identifier}]",command= str(tree_identifier), callback=self.callback_tree_selection)
+        last_item = self.menu_handler.insert(f"Tree: [{tip_tree_name}]",command= str(tree_identifier), callback=self.callback_tree_selection)
         self.menu_handler.setCheckState(last_item, MenuHandler.UNCHECKED)
         self.menu_handler.setVisible(last_item, True)
 

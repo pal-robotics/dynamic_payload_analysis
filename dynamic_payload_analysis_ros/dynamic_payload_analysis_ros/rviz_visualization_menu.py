@@ -111,7 +111,7 @@ class RobotDescriptionSubscriber(Node):
         
         # Add subtree to the menu 
         for i, subtree in enumerate(self.robot.get_subtrees()):
-            self.menu.insert_subtree(subtree['tip_joint_name'], subtree["joint_names"], subtree["joint_ids"])
+            self.menu.insert_subtree(i,subtree['tip_joint_name'], subtree["joint_names"], subtree["joint_ids"])
 
         # self.robot.print_configuration()
 
