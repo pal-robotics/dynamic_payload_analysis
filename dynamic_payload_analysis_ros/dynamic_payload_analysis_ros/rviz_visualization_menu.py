@@ -111,7 +111,7 @@ class RobotDescriptionSubscriber(Node):
         
         # Add subtree to the menu 
         for i, subtree in enumerate(self.robot.get_subtrees()):
-            self.menu.insert_subtree(subtree['tree_id'], subtree["joint_names"], subtree["joint_ids"])
+            self.menu.insert_subtree(subtree['tip_joint_name'], subtree["joint_names"], subtree["joint_ids"])
 
         # self.robot.print_configuration()
 
@@ -406,8 +406,7 @@ class RobotDescriptionSubscriber(Node):
             
             # insert points related to the end effector position in the workspace area and with color based on the normalized torques for each joint
             for joint_pos,tau in zip(joint_positions,norm_joints_torques):
-                # print only the points for the corrisponding arm, in this way we can visualize the workspace area for each arm separately and avoid confusion
-                # TODO 
+                # print only the points for the corrisponding tree_id of the valid configuration
                 if self.robot.verify_member_tree(valid_config["tree_id"],joint_pos["id"]): 
                     point = Marker()
                     point.header.frame_id = "base_link"

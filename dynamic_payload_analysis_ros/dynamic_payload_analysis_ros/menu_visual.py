@@ -116,7 +116,7 @@ class MenuPayload():
         Args:
             name (str) : name of the subtree  
         """
-        last_item = self.menu_handler.insert(f"Tree {tree_identifier}",command= str(tree_identifier), callback=self.callback_tree_selection)
+        last_item = self.menu_handler.insert(f"Tree: [{tree_identifier}]",command= str(tree_identifier), callback=self.callback_tree_selection)
         self.menu_handler.setCheckState(last_item, MenuHandler.UNCHECKED)
         self.menu_handler.setVisible(last_item, True)
 

@@ -65,16 +65,18 @@ class TorqueCalculator:
         # get the default collisions in the robot model to avoid take them into account in the computations
         self.default_collisions = self.compute_static_collisions()
 
+
+        
+
         # compute main trees of the robot model
-        self.root_joints = ["arm_left_1_joint", "arm_right_1_joint", "leg_left_1_joint", "leg_right_1_joint", "head_1_joint"]
-        self.compute_sub_trees()
+        self.compute_subtrees()
 
 
         # array to store all configurations for the robot model
         self.configurations = np.array([], dtype=object)
 
         # create items for each tree in the robot model
-        for tree in self.sub_trees:
+        for tree in self.subtrees:
             self.configurations = np.append(self.configurations, {"tree_id": tree["tree_id"], "configurations": None, "selected_joint_id" : None})
 
 
@@ -101,7 +103,7 @@ class TorqueCalculator:
         return collision_pairs
         
     
-    def compute_sub_trees(self):
+    def compute_subtrees(self):
         """
         Compute the sub-trees of the robot model.
         This method is used to compute the sub-trees of the robot model
@@ -109,42 +111,28 @@ class TorqueCalculator:
         
         # array to store the sub-trees
         trees = np.array([], dtype=object)
-                              
-        for sub_tree in self.model.subtrees:
-            # get the root joint ID of the sub-tree
-            root_joint_id = sub_tree[0]
+
+        ## build subtrees: 
+        #print("## Building subtrees ...")
+        # First, find all the tip joints : joints that are the leaves of the kinematic chain:
+        tip_joints = []
+        for id in range(0, self.model.njoints):
+          if len(self.model.subtrees[id]) == 1:
+            tip_joints += [id]
+        
+        #print("Total number of kinematic trees: ", len(tip_joints)
+        #print("Tip joints : ", tip_joints)
+        
+        self.subtrees = np.array([], dtype=object)
+        
+        for i, jointID in enumerate(tip_joints):
+            joint_tree_ids = self.model.supports[jointID].tolist()
+
             # get the joint names in the sub-tree
-            joint_names = [self.model.names[joint_id] for joint_id in sub_tree]
-            # get the joint IDs in the sub-tree
-            joint_ids = [self.model.getJointId(joint_name) for joint_name in joint_names]
-            # append the sub-tree to the array
-            trees = np.append(trees, {"joint_names": joint_names, "joint_ids": joint_ids, "root_joint_id": root_joint_id})
-        
-        self.sub_trees = self.compute_main_trees(trees)
+            joint_names = [self.model.names[joint_id] for joint_id in joint_tree_ids]
+            
+            self.subtrees = np.append(self.subtrees, {"tree_id": i, "joint_names": joint_names, "joint_ids": joint_tree_ids,"tip_joint_name":self.model.names[jointID]  ,"tip_joint_id": jointID, "selected_joint_id": None})
 
-        
-
-    def compute_main_trees(self, trees: np.ndarray) -> np.ndarray:
-        """
-        Compute the main trees of the robot model based on the sub-trees.
-        
-        :param trees: Array of sub-trees of the robot model.
-        :return: Array of main trees of the robot model.
-        """
-        
-        # array to store the main trees
-        main_trees = np.array([], dtype=object)
-
-        root_joint_ids = [self.model.getJointId(joint_name) for joint_name in self.root_joints]
-        
-        # Iterate over all joints in the model
-        id = 0
-        for tree in trees:
-            if tree["root_joint_id"] in root_joint_ids:
-                main_trees = np.append(main_trees, {"tree_id": id, "joint_names": tree['joint_names'], "joint_ids": tree['joint_ids'], "root_joint_id": tree["root_joint_id"], "selected_joint_id": None})
-                id += 1
-        
-        return main_trees
         
 
     def compute_inverse_dynamics(self, q : np.ndarray , qdot : np.ndarray, qddot : np.ndarray, extForce : np.ndarray = None) -> np.ndarray:
@@ -445,7 +433,7 @@ class TorqueCalculator:
         valid_current_configurations = np.array([], dtype=object)
 
         # compute all configurations for the selected joints of the trees
-        for tree,configuration in zip(self.sub_trees,self.configurations):
+        for tree,configuration in zip(self.subtrees,self.configurations):
             # if the configurations are not computed or the selected joint ID is not the same as in the tree, compute the configurations
             if configuration["configurations"] is None or configuration["selected_joint_id"] != tree["selected_joint_id"]:
                 if tree["selected_joint_id"] is not None:
@@ -562,7 +550,7 @@ class TorqueCalculator:
         """
         
         # Check if the joint ID is in the list of joint IDs for the specified tree
-        return joint_id in self.sub_trees[tree_id]["joint_ids"]
+        return joint_id in self.subtrees[tree_id]["joint_ids"]
 
 
     def get_subtrees(self) -> np.ndarray:
@@ -571,7 +559,7 @@ class TorqueCalculator:
         
         :return: Array of sub-trees of the robot model.
         """
-        return self.sub_trees
+        return self.subtrees
 
 
     def get_maximum_torques(self, valid_configs : np.ndarray) -> np.ndarray | np.ndarray:
@@ -589,7 +577,7 @@ class TorqueCalculator:
         abs_joint_torques = np.array([], dtype=object)
         
         # get the selected trees from the sub_trees
-        selected_trees = [tree for tree in self.sub_trees if tree["selected_joint_id"] is not None]
+        selected_trees = [tree for tree in self.subtrees if tree["selected_joint_id"] is not None]
         
         # create an array to store the absolute torques for each joint in the current valid configurations for each selected tree
         for tree in selected_trees:
@@ -626,7 +614,7 @@ class TorqueCalculator:
         :return: Tuple of arrays of maximum payloads for left and right arms.
         """
         max_payloads = np.array([], dtype=float)
-        for tree in self.sub_trees:
+        for tree in self.subtrees:
             payloads = [config["max_payload"] for config in valid_configs if config["tree_id"] == tree["tree_id"]]
             if payloads:
                 max_payload = max(payloads)
@@ -710,7 +698,7 @@ class TorqueCalculator:
 
 
         # get the maximum torque from the sum of torques for all selected trees
-        for tree in self.sub_trees:
+        for tree in self.subtrees:
             # Get all sum values for the current tree
             tree_sums = [item["sum"] for item in torques_sum if item["tree_id"] == tree["tree_id"]]
             
@@ -860,7 +848,7 @@ class TorqueCalculator:
         
         else:
             # Check if the torque of joints inside the tree is within the limits
-            for id in self.sub_trees[tree_id]["joint_ids"]:
+            for id in self.subtrees[tree_id]["joint_ids"]:
                 if abs(tau[id-1]) > self.model.effortLimit[id-1]:
                     print(f"\033[91mJoint {id} exceeds effort limit: {tau[id-1]} > {self.model.effortLimit[id-1]} \033[0m\n")
                     within_limits = np.append(within_limits, False)
@@ -889,7 +877,7 @@ class TorqueCalculator:
         :param tree_id: ID of the tree to select.
         :param joint_id: ID of the joint to select.
         """
-        for tree in self.sub_trees:
+        for tree in self.subtrees:
             if tree["tree_id"] == tree_id:
                 # Set the selected joint in the tree
                 tree["selected_joint_id"] = joint_id
