@@ -24,7 +24,7 @@ from optik import Robot, SolverConfig
 import tempfile
 from ikpy import chain
 import os
-
+import xml.etree.ElementTree as ET
 
 
 
@@ -39,16 +39,14 @@ class TorqueCalculator:
 
         # Load the robot model from path or XML string
         if isinstance(robot_description, str):
-            self.model = pin.buildModelFromXML(robot_description, mimic= True)
-            
-            self.compute_mimic_joints()
-
             self.model = pin.buildModelFromXML(robot_description)
             
             # create temporary URDF file from the robot description string
             with tempfile.NamedTemporaryFile(mode='w', suffix='.urdf', delete=False) as temp_file:
                     temp_file.write(robot_description)
                     temp_urdf_path = temp_file.name
+
+            self.compute_mimic_joints(temp_urdf_path)
 
             self.geom_model = pin.buildGeomFromUrdf(self.model,temp_urdf_path,pin.GeometryType.COLLISION)
             
@@ -77,14 +75,36 @@ class TorqueCalculator:
         for tree in self.subtrees:
             self.configurations = np.append(self.configurations, {"tree_id": tree["tree_id"], "configurations": None, "selected_joint_id" : None})
 
+    
 
-    def compute_mimic_joints(self):
+    def compute_mimic_joints(self, urdf_path):
         """
-        Compute the mimic joints for the robot model if the model is enabled for mimic joints.
+        Parses a URDF file to find all mimic joints with mimicked joints and ids.
+
+        Args:
+            urdf_path (str): The file path to the URDF model.
         """
-        self.mimic_joint_ids = self.model.mimicking_joints.tolist()
-        self.mimicked_joint_ids = self.model.mimicked_joints.tolist()
-        self.mimic_joint_names = [self.model.names[joint_id] for joint_id in self.mimic_joint_ids]
+        try:
+            tree = ET.parse(urdf_path)
+            root = tree.getroot()
+        except ET.ParseError as e:
+            print(f"Error parsing URDF file: {e}")
+            return []
+
+        self.mimic_joint_names = []
+        self.mimicked_joint_names = []
+
+        # Find all <joint> tags in the URDF
+        for joint in root.findall('joint'):
+            mimic_tag = joint.find('mimic')
+
+            # Check if the joint has a <mimic> sub-tag
+            if mimic_tag is not None:
+                self.mimic_joint_names.append(joint.get('name'))
+                self.mimicked_joint_names.append(mimic_tag.get('joint'))
+
+        self.mimic_joint_ids = [self.model.getJointId(name) for name in self.mimic_joint_names]
+        self.mimicked_joint_ids = [self.model.getJointId(name) for name in self.mimicked_joint_names]
 
 
     def compute_static_collisions(self):
@@ -632,6 +652,7 @@ class TorqueCalculator:
             max_tau = np.array([], dtype=object)
             # Get the maximum absolute torque for the current joint
             for tau in torques["abs_torques"]:
+                #TODO: error if the array is empty, when a tree has no valid configurations
                 max_tau = np.append(max_tau, max(tau["abs"]))
             
             max_torques = np.append(max_torques, {"tree_id": torques["tree_id"], "max_values": max_tau})
