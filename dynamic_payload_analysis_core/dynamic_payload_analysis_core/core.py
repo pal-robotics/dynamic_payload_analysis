@@ -1066,20 +1066,28 @@ class TorqueCalculator:
     
 
 
-    def get_active_frames(self) -> np.ndarray:
+    def get_active_frames(self, all_frames : bool = False) -> np.ndarray:
         """
         Get the array of active joint names in the robot model.
-        
+        :param all_frames: If True, return all frames, otherwise return only tip frames.
         :return: array of active joint names.
         """
         # Get frames where joints are parents
         frame_names = []
-        for i in range(1, self.model.njoints):
-            for frame in self.model.frames:
-                if frame.parentJoint == i and frame.type == pin.FrameType.BODY:
-                    frame_names.append(frame.name)
-                    break
-        
+
+        if all_frames:
+            for i in range(1, self.model.njoints):
+                for frame in self.model.frames:
+                    if frame.parentJoint == i and frame.type == pin.FrameType.BODY:
+                        if frame.parentJoint not in self.mimic_joint_ids:
+                            frame_names.append(frame.name)
+                            break
+        else:
+            for tree in self.subtrees:
+                tree["tip_joint_id"]
+                parent_frame = next((frame for frame in self.model.frames if frame.parentJoint == tree["tip_joint_id"] and frame.type == pin.FrameType.BODY))
+                frame_names.append(parent_frame.name)
+
         return np.array(frame_names, dtype=str)
     
 

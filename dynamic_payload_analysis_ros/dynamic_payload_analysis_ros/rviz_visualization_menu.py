@@ -32,6 +32,11 @@ from builtin_interfaces.msg import Time
 class RobotDescriptionSubscriber(Node):
     def __init__(self):
         super().__init__('node_robot_description_subscriber')
+        
+        # add parameters for the node to set the expert mode or the basic mode
+        self.declare_parameter('advanced_mode', False)
+        
+        
         self.subscription = self.create_subscription(
             String,
             '/robot_description',
@@ -105,8 +110,8 @@ class RobotDescriptionSubscriber(Node):
         self.robot.print_active_joint()
         self.robot.print_frames()
         
-        # Add the frame to the menu for payload selection
-        for frame in self.robot.get_active_frames():
+        # Add the frame to the menu for payload selection with the advanced mode parameter
+        for frame in self.robot.get_active_frames(self.get_parameter('advanced_mode').get_parameter_value().bool_value):
             self.menu.insert_frame(frame)
         
         # Add subtree to the menu 
