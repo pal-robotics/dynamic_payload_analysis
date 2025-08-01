@@ -41,11 +41,9 @@ class TorqueCalculator:
         if isinstance(robot_description, str):
             self.model = pin.buildModelFromXML(robot_description, mimic= True)
             
-            self.mimic_joints = self.model.mimicking_joints.tolist()
-            self.mimic_joint_names = [self.model.names[joint_id] for joint_id in self.mimic_joints]
+            self.compute_mimic_joints()
 
             self.model = pin.buildModelFromXML(robot_description)
-            # TODO change parser in general for more unique solution
             
             # create temporary URDF file from the robot description string
             with tempfile.NamedTemporaryFile(mode='w', suffix='.urdf', delete=False) as temp_file:
@@ -80,6 +78,15 @@ class TorqueCalculator:
             self.configurations = np.append(self.configurations, {"tree_id": tree["tree_id"], "configurations": None, "selected_joint_id" : None})
 
 
+    def compute_mimic_joints(self):
+        """
+        Compute the mimic joints for the robot model if the model is enabled for mimic joints.
+        """
+        self.mimic_joint_ids = self.model.mimicking_joints.tolist()
+        self.mimicked_joint_ids = self.model.mimicked_joints.tolist()
+        self.mimic_joint_names = [self.model.names[joint_id] for joint_id in self.mimic_joint_ids]
+
+
     def compute_static_collisions(self):
         """
         Compute the static collisions for the robot model.
@@ -109,9 +116,6 @@ class TorqueCalculator:
         This method is used to compute the sub-trees of the robot model
         """
         
-        # array to store the sub-trees
-        trees = np.array([], dtype=object)
-
         ## build subtrees: 
         #print("## Building subtrees ...")
         # First, find all the tip joints : joints that are the leaves of the kinematic chain:
@@ -122,18 +126,48 @@ class TorqueCalculator:
         
         #print("Total number of kinematic trees: ", len(tip_joints)
         #print("Tip joints : ", tip_joints)
-        
         self.subtrees = np.array([], dtype=object)
         
         for i, jointID in enumerate(tip_joints):
-            joint_tree_ids = self.model.supports[jointID].tolist()
-
-            # get the joint names in the sub-tree
-            joint_names = [self.model.names[joint_id] for joint_id in joint_tree_ids]
+            joint_tree_ids = self.get_filtered_subtree(jointID)
             
-            self.subtrees = np.append(self.subtrees, {"tree_id": i, "joint_names": joint_names, "joint_ids": joint_tree_ids,"tip_joint_name":self.model.names[jointID]  ,"tip_joint_id": jointID, "selected_joint_id": None})
+            # insert the sub-tree only if the tip joint is not already in the sub-trees
+            tip_joint_already_exists = False
+            for existing_tree in self.subtrees:
+                if existing_tree["tip_joint_id"] == joint_tree_ids[-1]:
+                    tip_joint_already_exists = True
+                    break
 
+            if not tip_joint_already_exists:
+                # get the joint names in the sub-tree
+                joint_names = [self.model.names[joint_id] for joint_id in joint_tree_ids]
+                
+                self.subtrees = np.append(self.subtrees, {"tree_id": i, "joint_names": joint_names, "joint_ids": joint_tree_ids,"tip_joint_name": self.model.names[joint_tree_ids[-1]], "tip_joint_id": joint_tree_ids[-1], "selected_joint_id": None})
+
+    
+    def get_filtered_subtree(self, current_tip_id : int) -> np.ndarray:
+        """
+        Filter the sub-trees of the robot based on the mimic joints and mimicked joints.
+        If the current tip joint is not a mimic joint, the subtree is returned as is.
         
+        :param current_tip_id: Id of the current tip joint to filter the subtree.
+        :return: Filtered tree with tip joint based on the mimicked joint of the mimic joint.
+        """
+        # find mimicked joint of the current tip joint
+        if current_tip_id in self.mimic_joint_ids:
+            # get the index of the mimic joint in the mimic_joint_ids
+            mimic_joint_index = self.mimic_joint_ids.index(current_tip_id)
+            # get the mimicked joint id
+            mimicked_joint_id = self.mimicked_joint_ids[mimic_joint_index]
+            
+            # filter the subtree to include only the mimicked joint and its children
+            filtered_subtree = self.model.supports[mimicked_joint_id].tolist()
+        else:
+            # if the current tip joint is not a mimic joint, return the subtree as is
+            filtered_subtree = self.model.supports[current_tip_id].tolist()
+        
+        return filtered_subtree
+
 
     def compute_inverse_dynamics(self, q : np.ndarray , qdot : np.ndarray, qddot : np.ndarray, extForce : np.ndarray = None) -> np.ndarray:
         """
