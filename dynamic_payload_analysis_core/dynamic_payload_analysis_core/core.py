@@ -147,7 +147,7 @@ class TorqueCalculator:
         #print("Total number of kinematic trees: ", len(tip_joints)
         #print("Tip joints : ", tip_joints)
         self.subtrees = np.array([], dtype=object)
-        
+        cont = 0
         for i, jointID in enumerate(tip_joints):
             joint_tree_ids = self.get_filtered_subtree(jointID)
             
@@ -162,9 +162,10 @@ class TorqueCalculator:
                 # get the joint names in the sub-tree
                 joint_names = [self.model.names[joint_id] for joint_id in joint_tree_ids]
                 
-                self.subtrees = np.append(self.subtrees, {"tree_id": i, "joint_names": joint_names, "joint_ids": joint_tree_ids,"tip_joint_name": self.model.names[joint_tree_ids[-1]], "tip_joint_id": joint_tree_ids[-1], "selected_joint_id": None})
-
+                self.subtrees = np.append(self.subtrees, {"tree_id": cont, "joint_names": joint_names, "joint_ids": joint_tree_ids,"tip_joint_name": self.model.names[joint_tree_ids[-1]], "tip_joint_id": joint_tree_ids[-1], "selected_joint_id": None})
+                cont += 1
     
+
     def get_filtered_subtree(self, current_tip_id : int) -> np.ndarray:
         """
         Filter the sub-trees of the robot based on the mimic joints and mimicked joints.
@@ -652,8 +653,10 @@ class TorqueCalculator:
             max_tau = np.array([], dtype=object)
             # Get the maximum absolute torque for the current joint
             for tau in torques["abs_torques"]:
-                #TODO: error if the array is empty, when a tree has no valid configurations
-                max_tau = np.append(max_tau, max(tau["abs"]))
+                if len(tau["abs"]) > 0:
+                    max_tau = np.append(max_tau, max(tau["abs"]))
+                else:
+                    max_tau = np.append(max_tau, 0.0)
             
             max_torques = np.append(max_torques, {"tree_id": torques["tree_id"], "max_values": max_tau})
         

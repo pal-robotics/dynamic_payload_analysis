@@ -213,7 +213,7 @@ class RobotDescriptionSubscriber(Node):
             
             joint_state.name = [joint["joint_name"] for joint in configs]
             joint_state.position = [joint["q"] for joint in configs]
-            #joint_state.position =
+            
             self.publisher_joint_states.publish(joint_state)
 
         else:
@@ -504,7 +504,7 @@ class RobotDescriptionSubscriber(Node):
             marker_point_name.action = Marker.ADD
             marker_point_name.pose.position.x = valid_config["end_effector_pos"][0]
             marker_point_name.pose.position.y = valid_config["end_effector_pos"][1]
-            marker_point_name.pose.position.z = valid_config["end_effector_pos"][2] + 0.05
+            marker_point_name.pose.position.z = valid_config["end_effector_pos"][2] 
             marker_point_name.pose.orientation.w = 1.0
             marker_point_name.scale.x = 0.02
             marker_point_name.scale.y = 0.02
