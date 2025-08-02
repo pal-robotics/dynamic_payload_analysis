@@ -25,7 +25,7 @@ import tempfile
 from ikpy import chain
 import os
 import xml.etree.ElementTree as ET
-
+from urdf_parser_py.urdf import URDF
 
 
 class TorqueCalculator:
@@ -41,12 +41,13 @@ class TorqueCalculator:
         if isinstance(robot_description, str):
             self.model = pin.buildModelFromXML(robot_description)
             
+            # compute mimic joints 
+            self.compute_mimic_joints(robot_description)
+
             # create temporary URDF file from the robot description string
             with tempfile.NamedTemporaryFile(mode='w', suffix='.urdf', delete=False) as temp_file:
                     temp_file.write(robot_description)
                     temp_urdf_path = temp_file.name
-
-            self.compute_mimic_joints(temp_urdf_path)
 
             self.geom_model = pin.buildGeomFromUrdf(self.model,temp_urdf_path,pin.GeometryType.COLLISION)
             
@@ -76,33 +77,30 @@ class TorqueCalculator:
             self.configurations = np.append(self.configurations, {"tree_id": tree["tree_id"], "configurations": None, "selected_joint_id" : None})
 
     
-
-    def compute_mimic_joints(self, urdf_path):
+    def compute_mimic_joints(self, urdf_xml):
         """
-        Parses a URDF file to find all mimic joints with mimicked joints and ids.
+        Function to find all mimic joints with mimicked joints and ids.
 
         Args:
-            urdf_path (str): The file path to the URDF model.
+            urdf_xml (str): The string from robot_description topic.
         """
         try:
-            tree = ET.parse(urdf_path)
-            root = tree.getroot()
+            robot = URDF.from_xml_string(urdf_xml)
         except ET.ParseError as e:
-            print(f"Error parsing URDF file: {e}")
-            return []
+            print(f"Error parsing URDF xml: {e}")
 
         self.mimic_joint_names = []
         self.mimicked_joint_names = []
 
-        # Find all <joint> tags in the URDF
-        for joint in root.findall('joint'):
-            mimic_tag = joint.find('mimic')
+        # Iterate through all joints in the robot model to find mimic joints
+        for joint in robot.joints:
+            if joint.mimic is not None:
+                # Add the mimic joint name to the list
+                self.mimic_joint_names.append(joint.name)
+                # Add the mimicked joint name to the list
+                self.mimicked_joint_names.append(joint.mimic.joint)
 
-            # Check if the joint has a <mimic> sub-tag
-            if mimic_tag is not None:
-                self.mimic_joint_names.append(joint.get('name'))
-                self.mimicked_joint_names.append(mimic_tag.get('joint'))
-
+        # create lists of joint ids for mimic and mimicked joints
         self.mimic_joint_ids = [self.model.getJointId(name) for name in self.mimic_joint_names]
         self.mimicked_joint_ids = [self.model.getJointId(name) for name in self.mimicked_joint_names]
 
