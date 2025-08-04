@@ -130,11 +130,17 @@ class RobotDescriptionSubscriber(Node):
         for frame in self.menu.get_item_state():
 
             id_force = self.robot.get_parent_joint_id(frame["name"])
-            joint_position = self.robot.get_joint_placement(id_force)
+            
+            # use the selected configuration from the menu to get the right joint placement 
+            if self.selected_configuration is not None:
+                joint_position = self.robot.get_joint_placement(id_force,self.valid_configurations[self.selected_configuration]["config"])
+            else:
+                joint_position = self.robot.get_joint_placement(id_force,self.robot.get_zero_configuration())
+
             arrow_force = Marker()
 
             arrow_force.header.frame_id = "base_link" 
-            arrow_force.header.stamp = self.get_clock().now().to_msg()
+            arrow_force.header.stamp = Time()
             arrow_force.ns = "external_force"
             arrow_force.id = id_force
             arrow_force.type = Marker.ARROW
@@ -175,7 +181,7 @@ class RobotDescriptionSubscriber(Node):
         """
         # if the user choose to compute the workspace area then compute the valid configurations
         if self.menu.get_workspace_state():
-            self.valid_configurations = self.robot.get_valid_workspace(2, 0.20, self.masses, self.checked_frames)
+            self.valid_configurations = self.robot.get_valid_workspace(range = 2,resolution = 0.20, masses = self.masses, checked_frames = self.checked_frames)
 
             # compute the maximum payloads for the valid configurations
             self.valid_configurations = self.robot.compute_maximum_payloads(self.valid_configurations)

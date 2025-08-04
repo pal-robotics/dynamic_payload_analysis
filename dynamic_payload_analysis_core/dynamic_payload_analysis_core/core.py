@@ -327,7 +327,7 @@ class TorqueCalculator:
         """
 
         # Set parameters for the inverse kinematics solver
-        eps = 1e-3 # reduce for more precision
+        eps = 1e-2 # reduce for more precision
         IT_MAX = 500 # Maximum number of iterations
         DT = 1e-1 
         damp = 1e-12
@@ -472,7 +472,7 @@ class TorqueCalculator:
         return np.array(valid_configurations, dtype=object)
         
 
-    def get_valid_workspace(self, range : int, resolution : int, masses : np.ndarray, checked_frames: np.ndarray) -> np.ndarray:
+    def get_valid_workspace(self, range : int, resolution : float, masses : np.ndarray, checked_frames: np.ndarray) -> np.ndarray:
         """
         Get the valid workspace of the robot model by computing all configurations within a specified range.
         
@@ -1035,14 +1035,17 @@ class TorqueCalculator:
 
         return self.model.names[id_joint]
 
-    def get_joint_placement(self, joint_id : int) -> dict:
+    def get_joint_placement(self, joint_id : int, q : np.ndarray) -> dict:
         """
         Get the placement of a specific joint in the robot model.
         
         :param joint_id: ID of the joint to get the placement for.
+        :param q: Joint configuration vector.
         :return: Dictionary with coordinates x , y , z of the joint.
         """
         
+        self.update_configuration(q)
+
         if joint_id < 0 or joint_id >= self.model.njoints:
             raise ValueError(f"Joint ID {joint_id} is out of bounds for the robot model with {self.model.njoints} joints.")
         
