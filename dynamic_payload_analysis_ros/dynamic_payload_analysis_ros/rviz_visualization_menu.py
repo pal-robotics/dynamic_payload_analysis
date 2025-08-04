@@ -83,6 +83,15 @@ class RobotDescriptionSubscriber(Node):
         # variable to store the currente selected configuration from the workspace menu
         self.valid_configurations = None
 
+        # id of the valid configurations to detect changes
+        self.id_current_valid_config = None
+        self.prev_id_current_valid_config = None
+
+        # variable to store markers for the workspace area and maximum payloads area
+        self.marker_points = None 
+        self.marker_point_names = None
+        self.marker_max_payloads = None
+
         # variable to store if there is a selected configuration from the workspace menu to visualize
         self.selected_configuration = None
 
@@ -198,8 +207,8 @@ class RobotDescriptionSubscriber(Node):
         # if there are valid configurations, publish the workspace area
         if self.valid_configurations is not None:
             # publish the workspace area
-            self.publish_workspace_area()
-            self.publish_maximum_payloads_area()
+            self.publish_workspace_area_maximum_payload_area()
+            
             
             
 
@@ -362,16 +371,19 @@ class RobotDescriptionSubscriber(Node):
                 marker_array.markers.append(marker)
         
         self.publisher_rviz_torque.publish(marker_array)
-        
+    
 
-    def publish_workspace_area(self):
-        """
-        Publish the workspace area in RViz using points and labels for the end points.
 
+    def generate_workspace_markers(self):
         """
+        Generate markers for the workspace area in RViz.
+        This function creates markers for the end effector positions of the valid configurations and visualizes them
+        with colors based on the normalized torques for each joint.
+        It also creates labels for the end points of the valid configurations.
+        """
+
         # Create a MarkerArray to visualize the number of configuration of a specific point in the workspace
         marker_point_names = MarkerArray()
-
         # Create a Marker for the workspace area using points
         marker_points = MarkerArray()
 
@@ -447,7 +459,6 @@ class RobotDescriptionSubscriber(Node):
             # Add the marker point name to the marker point names array
             marker_point_names.markers.append(marker_point_name)
 
-
         # get the unified torque for the valid configurations
         unified_configurations_torque = self.robot.get_unified_configurations_torque(self.valid_configurations)
 
@@ -479,18 +490,54 @@ class RobotDescriptionSubscriber(Node):
             marker_points.markers.append(marker_point)
 
 
+        return marker_points, marker_point_names
+
+
+
+    # TODO : try to optimize the function to avoid iterating through all the valid configurations every time
+    def publish_workspace_area_maximum_payload_area(self):
+        """
+        Publish the workspace area and maximum payloads area in RViz using points and labels for the end points.
+        """
+
+        self.id_current_valid_config = self.get_id_current_valid_configurations()
+
+        # check if the valid configurations is different from the previous one
+        if self.id_current_valid_config != self.prev_id_current_valid_config:
+            # generate the markers for the workspace area
+            self.marker_points, self.marker_point_names = self.generate_workspace_markers()
+            self.marker_max_payloads = self.generate_maximum_payloads_markers()
+        else:
+            # if the valid configurations are the same as the previous one, use the previous markers
+            if self.marker_points is not None and self.marker_point_names is not None:
+                # update the header stamp of the markers to the current time
+                for marker in self.marker_points.markers:
+                    marker.header.stamp = Time()
+
+                for marker in self.marker_point_names.markers:
+                    marker.header.stamp = Time()
+
+            if self.marker_max_payloads is not None:
+                # update the header stamp of the maximum payloads markers to the current time
+                for marker in self.marker_max_payloads.markers:
+                    marker.header.stamp = Time()
+
+        self.prev_id_current_valid_config = self.id_current_valid_config
+
         # Publish the marker points and names
-        self.publisher_workspace_area.publish(marker_points)
-        self.publisher_workspace_area_names.publish(marker_point_names)
+        self.publisher_workspace_area.publish(self.marker_points)
+        self.publisher_workspace_area_names.publish(self.marker_point_names)
+        
+        # Publish the maximum payloads markers and labels
+        self.publisher_maximum_payloads.publish(self.marker_max_payloads)
     
 
-    def publish_maximum_payloads_area(self):
+    def generate_maximum_payloads_markers(self):
         """
-        Publish the maximum payloads area in RViz using points and labels for the end points.
+        Generate markers for the maximum payloads in the workspace area in RViz.
         """
         # Create a MarkerArray to visualize the maximum payloads
         marker_max_payloads = MarkerArray()
-        marker_label_payloads = MarkerArray()
 
         # get the maximum payloads for each arm based on the valid configurations
         max_payloads = self.robot.get_maximum_payloads(self.valid_configurations)
@@ -554,8 +601,27 @@ class RobotDescriptionSubscriber(Node):
             # Add the marker point name to the marker point names array
             marker_max_payloads.markers.append(marker_point_name)
 
-        # Publish the maximum payloads markers and labels
-        self.publisher_maximum_payloads.publish(marker_max_payloads)
+        return marker_max_payloads
+
+
+    def get_id_current_valid_configurations(self):
+        """Generate a hash of the current valid configurations to detect changes."""
+        if self.valid_configurations is None:
+            return None
+        
+        # Create a hash based on configuration data and torque color mode
+        config_str = str([
+            (config.get('tree_id', ''), 
+            tuple(config.get('config', [])), 
+            tuple(config.get('tau', [])), 
+            tuple(config.get('end_effector_pos', [])),
+            config.get('max_payload', 0)) 
+            for config in self.valid_configurations
+        ])
+        torque_mode = str(self.menu.get_torque_color())
+        
+        return hash(config_str + torque_mode)
+
 
 
     def clear_workspace_area_markers(self):
