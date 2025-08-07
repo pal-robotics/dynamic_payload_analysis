@@ -33,8 +33,13 @@ class RobotDescriptionSubscriber(Node):
     def __init__(self):
         super().__init__('node_robot_description_subscriber')
         
-        # add parameters for the node to set the expert mode or the basic mode
+        # add parameter for the node to set the expert mode or the basic mode
         self.declare_parameter('advanced_mode', False)
+
+        # add parameter for the node to set the resolution of IK calculations
+        self.declare_parameter('resolution_ik', 0.20)
+
+        self.resolution_ik = self.get_parameter('resolution_ik').get_parameter_value().double_value
         
         
         self.subscription = self.create_subscription(
@@ -190,7 +195,7 @@ class RobotDescriptionSubscriber(Node):
         """
         # if the user choose to compute the workspace area then compute the valid configurations
         if self.menu.get_workspace_state():
-            self.valid_configurations = self.robot.get_valid_workspace(range = 2,resolution = 0.20, masses = self.masses, checked_frames = self.checked_frames)
+            self.valid_configurations = self.robot.get_valid_workspace(range = 2,resolution= self.resolution_ik, masses = self.masses, checked_frames = self.checked_frames)
 
             # compute the maximum payloads for the valid configurations
             self.valid_configurations = self.robot.compute_maximum_payloads(self.valid_configurations)
