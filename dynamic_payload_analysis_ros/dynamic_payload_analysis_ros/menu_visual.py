@@ -35,7 +35,7 @@ class MenuPayload():
         # create server for interactive markers
         self.server = InteractiveMarkerServer(node, 'menu_frames')
 
-        # array to store the checked orunchecked frames and payload selection
+        # array to store the checked or unchecked frames for payload selection
         self.frames_selection = np.array([],dtype=object)
 
         # array to store the selected frame in the subtree menu
@@ -52,6 +52,9 @@ class MenuPayload():
 
         # variable to store the selected configuration to display in Rviz
         self.selected_configuration = None
+
+        # variable used as identifier for the payload selection menu items
+        self.identifier = "id_payload" 
 
         # payload mass selection array
         self.payload_selection = np.array([0.1, 0.2, 0.3, 0.4, 0.5, 1, 1.5, 1.8, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0, 5.5], dtype=float)
@@ -92,29 +95,70 @@ class MenuPayload():
 
     def insert_frame(self, name):
         """
-        Insert a new item(frame) in the checkbox menu of frames.
+        Insert a new item(frame) in the checkbox menu of frames for payload selection.
 
         Args:
             name (str) : name of the frame  
         """
-        last_item = self.menu_handler.insert(name, parent=self.root_frames, callback=self.callback_selection)
+        last_item = self.menu_handler.insert(name, parent=self.root_frames,command=self.identifier, callback=self.callback_selection)
         self.menu_handler.setCheckState(last_item, MenuHandler.UNCHECKED)
         self.menu_handler.setVisible(last_item, True)
         
+        # flag to check if the item is already in the checked frames array
+        flag = False
+
         # add the item to the checked frames array in order to keep track of the checked items
-        self.frames_selection = np.append(self.frames_selection, {"name": name, "checked" : False, "payload" : 0.0} )
+        for i, item in enumerate(self.frames_selection):
+            if item['name'] == name:
+                # if the item is already in the array, we need to update it as default
+                self.frames_selection[i] = {"name": item['name'], "checked": False, "payload": 0.0}
+                flag = True
+                break
+        
+        if flag is False:
+            # if the item is not in the array, we need to add it
+            self.frames_selection = np.append(self.frames_selection, {"name": name, "checked" : False, "payload" : 0.0} )
 
         # apply changes
         self.menu_handler.reApply(self.server)
         self.server.applyChanges()
 
     
-    def insert_subtree(self, tree_identifier : int,tip_tree_name : str, joint_names : np.ndarray, joint_ids : np.ndarray):
+    def remove_frame(self, name):
+        """
+        Remove a item(frame) in the checkbox menu of frames for payload selection.
+
+        Args:
+            name (str) : name of the frame  
+        """
+        # iterate through the menu entries to find the item with the specified name and identifier
+        # identifier is used to identify the item in the sub menu of payload selection
+        for i, item in self.menu_handler.entry_contexts_.items():
+            if item.title == name and item.command == self.identifier:
+                self.menu_handler.setCheckState(i, MenuHandler.UNCHECKED)
+                self.menu_handler.setVisible(i, False)
+        
+        # update the frames_selection array to set the item as default value
+        for i, item in enumerate(self.frames_selection):
+             if item['name'] == name:
+                self.frames_selection[i] = {"name": item['name'], "checked": False, "payload": 0.0}
+                break
+       
+        # apply changes
+        self.menu_handler.reApply(self.server)
+        self.server.applyChanges()
+
+    
+    def insert_subtree(self, tree_identifier : int,tip_tree_name : str, joint_names : np.ndarray, joint_ids : np.ndarray, link_names : np.ndarray):
         """
         Insert a new item(subtree) in the checkbox menu of frames.
 
         Args:
-            name (str) : name of the subtree  
+            tree_identifier (int): Identifier of the subtree.
+            tip_tree_name (str): Name of the tip joint of the subtree.
+            joint_names (np.ndarray): Names of the joints in the subtree.
+            joint_ids (np.ndarray): IDs of the joints in the subtree.
+            link_names (np.ndarray): Names of the links in the subtree. 
         """
         last_item = self.menu_handler.insert(f"Tree: [{tip_tree_name}]",command= str(tree_identifier), callback=self.callback_tree_selection)
         self.menu_handler.setCheckState(last_item, MenuHandler.UNCHECKED)
@@ -122,12 +166,12 @@ class MenuPayload():
 
         joints_list = np.array([], dtype=object)
 
-        for joint_name,id in zip(joint_names, joint_ids):
+        for joint_name,id,link_name in zip(joint_names, joint_ids, link_names):
             # insert the joint as a sub-menu of the subtree
-            last_entry = self.menu_handler.insert(f"{joint_name}", parent=last_item, command=str(last_item), callback=self.callback_joint_tree_selection)
+            last_entry = self.menu_handler.insert(f"{link_name}", parent=last_item, command=str(last_item), callback=self.callback_joint_tree_selection)
             self.menu_handler.setCheckState(last_entry, MenuHandler.UNCHECKED)
             self.menu_handler.setVisible(last_entry, True)
-            joints_list = np.append(joints_list,{"joint_name" : joint_name, "joint_id" : id})
+            joints_list = np.append(joints_list,{"joint_name" : joint_name, "joint_id" : id,"link_name" : link_name})
         
         self.subtree_selection = np.append(self.subtree_selection, {"tree" : tree_identifier, "joints" : joints_list, "selected_joint_id": None})
 
@@ -432,22 +476,22 @@ class MenuPayload():
             if item['selected_joint_id'] is not None:
                 return True
 
-    def update_joint_tree_selection(self, tree_identifier: int, joint_name : str):
+    def update_joint_tree_selection(self, tree_identifier: int, frame_name : str):
         """
         Update the state of a joint in the subtree menu.
         
         Args:
             tree_identifier (int): Identifier of the subtree.
-            joint_name (str): Name of the joint to update.
+            frame_name (str): Name of the selected link in the menu.
         """
         
         for item in self.subtree_selection:
             if item['tree'] == tree_identifier:
                 for joint in item['joints']:
-                    if joint['joint_name'] == joint_name and item['selected_joint_id'] != joint['joint_id']:
+                    if joint['link_name'] == frame_name and item['selected_joint_id'] != joint['joint_id']:
                         item['selected_joint_id'] = joint['joint_id']
                         break
-                    elif joint['joint_name'] == joint_name and item['selected_joint_id'] == joint['joint_id']:
+                    elif joint['link_name'] == frame_name and item['selected_joint_id'] == joint['joint_id']:
                         item['selected_joint_id'] = None
                         break
 

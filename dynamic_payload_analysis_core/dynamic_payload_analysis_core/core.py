@@ -157,10 +157,12 @@ class TorqueCalculator:
                     break
 
             if not tip_joint_already_exists:
+                # get the link names in the sub-tree
+                link_names = self.get_links_from_tree(joint_tree_ids)
                 # get the joint names in the sub-tree
                 joint_names = [self.model.names[joint_id] for joint_id in joint_tree_ids]
-                
-                self.subtrees = np.append(self.subtrees, {"tree_id": cont, "joint_names": joint_names, "joint_ids": joint_tree_ids,"tip_joint_name": self.model.names[joint_tree_ids[-1]], "tip_joint_id": joint_tree_ids[-1], "selected_joint_id": None})
+
+                self.subtrees = np.append(self.subtrees, {"tree_id": cont, "link_names": link_names ,"joint_names": joint_names, "joint_ids": joint_tree_ids,"tip_joint_name": self.model.names[joint_tree_ids[-1]], "tip_joint_id": joint_tree_ids[-1], "selected_joint_id": None})
                 cont += 1
     
 
@@ -184,6 +186,9 @@ class TorqueCalculator:
         else:
             # if the current tip joint is not a mimic joint, return the subtree as is
             filtered_subtree = self.model.supports[current_tip_id].tolist()
+
+        # remove universe joint
+        filtered_subtree = filtered_subtree[1:]
         
         return filtered_subtree
 
@@ -614,6 +619,27 @@ class TorqueCalculator:
         """
         return self.subtrees
 
+
+    def get_links_from_tree(self, joint_ids: np.ndarray | int) -> np.ndarray:
+        """
+        Get the links from the robot model based on the joint IDs.
+        
+        :param joint_ids: Array of joint IDs to get the frames for.
+        :return: Array of frames corresponding to the joint IDs.
+        """
+        frames = []
+        # If joint_ids is a single integer, convert it to a list
+        if isinstance(joint_ids, int):
+            joint_ids = [joint_ids]
+
+        for joint_id in joint_ids:
+            for link in self.model.frames:
+                if link.parentJoint == joint_id and link.type == pin.FrameType.BODY:
+                    frames.append(link.name)
+                    break
+        
+        return np.array(frames, dtype=object)
+    
 
     def get_maximum_torques(self, valid_configs : np.ndarray) -> np.ndarray | np.ndarray:
         """
@@ -1091,27 +1117,28 @@ class TorqueCalculator:
     
 
 
-    def get_active_frames(self, all_frames : bool = False) -> np.ndarray:
+    def get_links(self,all_frames : bool = False) -> np.ndarray:
         """
-        Get the array of active joint names in the robot model.
-        :param all_frames: If True, return all frames, otherwise return only tip frames.
-        :return: array of active joint names.
+        Get the array of link names for payload menu.
+        :param all_frames: If True, return all frames, otherwise return only current tip frames.
+        :return: array of link names.
         """
         # Get frames where joints are parents
         frame_names = []
-
+        
+        # If all_frames is True, get all link names from the subtrees
         if all_frames:
-            for i in range(1, self.model.njoints):
-                for frame in self.model.frames:
-                    if frame.parentJoint == i and frame.type == pin.FrameType.BODY:
-                        if frame.parentJoint not in self.mimic_joint_ids:
-                            frame_names.append(frame.name)
-                            break
-        else:
             for tree in self.subtrees:
-                tree["tip_joint_id"]
-                parent_frame = next((frame for frame in self.model.frames if frame.parentJoint == tree["tip_joint_id"] and frame.type == pin.FrameType.BODY))
-                frame_names.append(parent_frame.name)
+                if tree["selected_joint_id"] is not None:
+                    # insert links in the array
+                    for link in tree["link_names"]:
+                        frame_names.append(link)
+        else:
+            # if all_frames is False, get only the links connected to the selected joint IDs from the subtrees
+            for tree in self.subtrees:
+                if tree["selected_joint_id"] is not None:
+                    link_name = self.get_links_from_tree(tree["selected_joint_id"])
+                    frame_names.append(link_name[0])
 
         return np.array(frame_names, dtype=str)
     

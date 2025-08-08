@@ -85,7 +85,10 @@ class RobotDescriptionSubscriber(Node):
         # variable to store masses applied on the frames
         self.masses = None
 
-        # variable to store the currente selected configuration from the workspace menu
+        # variable to store current selected links for payload selection
+        self.links = None
+
+        # variable to store the current selected configuration from the workspace menu
         self.valid_configurations = None
 
         # id of the valid configurations to detect changes
@@ -108,6 +111,8 @@ class RobotDescriptionSubscriber(Node):
         self.timer_update_checked_items = self.create_timer(0.5, self.update_checked_items)
         # timer to publish the external forces as arrows in RViz
         self.timer_publish_force = self.create_timer(1.0, self.publish_payload_force)
+        # timer to update items in the menu for payload selection
+        self.timer_update_payload_selection = self.create_timer(0.5, self.update_payload_selection)
 
         self.get_logger().info('Robot description subscriber node started')
 
@@ -124,16 +129,33 @@ class RobotDescriptionSubscriber(Node):
         self.robot.print_active_joint()
         self.robot.print_frames()
         
-        # Add the frame to the menu for payload selection with the advanced mode parameter
-        for frame in self.robot.get_active_frames(self.get_parameter('advanced_mode').get_parameter_value().bool_value):
-            self.menu.insert_frame(frame)
-        
         # Add subtree to the menu 
         for i, subtree in enumerate(self.robot.get_subtrees()):
-            self.menu.insert_subtree(i,subtree['tip_joint_name'], subtree["joint_names"], subtree["joint_ids"])
+            self.menu.insert_subtree(i,subtree['tip_joint_name'], subtree["joint_names"], subtree["joint_ids"], subtree["link_names"])
 
-        # self.robot.print_configuration()
 
+    def update_payload_selection(self):
+        """
+        Callback function to update the payload selection in the menu.
+        """
+        if self.robot is not None:
+            # Add the frame to the menu for payload selection with the advanced mode parameter
+
+            links = self.robot.get_links(self.get_parameter('advanced_mode').get_parameter_value().bool_value)
+
+            for link in links:
+                if link in self.links:
+                    continue  # Skip if the link is already in the menu
+                else:
+                    self.menu.insert_frame(str(link))
+
+            # remove other links that are not in the current link selection
+            if self.links is not None:
+                for link in self.links:
+                    if link not in links:
+                        self.menu.remove_frame(str(link))
+
+            self.links = links  # Update the links to the current ones
 
     def publish_payload_force(self):
         """
@@ -498,8 +520,6 @@ class RobotDescriptionSubscriber(Node):
         return marker_points, marker_point_names
 
 
-
-    # TODO : try to optimize the function to avoid iterating through all the valid configurations every time
     def publish_workspace_area_maximum_payload_area(self):
         """
         Publish the workspace area and maximum payloads area in RViz using points and labels for the end points.
