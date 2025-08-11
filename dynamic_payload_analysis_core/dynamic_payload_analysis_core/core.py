@@ -20,11 +20,8 @@ import math
 from typing import Union
 from pathlib import Path
 from numpy.linalg import norm, solve
-from optik import Robot, SolverConfig
 import tempfile
-from ikpy import chain
 import os
-import xml.etree.ElementTree as ET
 from urdf_parser_py.urdf import URDF
 
 
@@ -86,8 +83,8 @@ class TorqueCalculator:
         """
         try:
             robot = URDF.from_xml_string(urdf_xml)
-        except ET.ParseError as e:
-            print(f"Error parsing URDF xml: {e}")
+        except:
+            print(f"Error parsing URDF xml")
 
         self.mimic_joint_names = []
         self.mimicked_joint_names = []

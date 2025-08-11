@@ -16,8 +16,7 @@
 
 import rclpy
 from rclpy.node import Node
-from std_msgs.msg import String, ColorRGBA
-from geometry_msgs.msg import WrenchStamped, Point
+from std_msgs.msg import String
 from sensor_msgs.msg import JointState
 from dynamic_payload_analysis_core.core import TorqueCalculator
 import numpy as np
