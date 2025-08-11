@@ -758,8 +758,8 @@ class TorqueCalculator:
         torques_sum = np.array([], dtype=float)
         norm_torques = np.array([], dtype=float)
 
-        # array to store the maximum sum of torques for each tree
-        max_value_torques = np.array([], dtype=float)
+        # array to store max and min sum of torques for each tree
+        max_min_value_torques = np.array([], dtype=float)
         sum = 0.0
 
         for valid_config in valid_configs:
@@ -768,7 +768,7 @@ class TorqueCalculator:
             tau = valid_config["tau"]
             
             # calculate the sum of torques for each joint configuration
-            for joint, torque in zip(q, tau):
+            for torque in tau:
                 #if abs(torque) < 50:
                 sum += abs(torque)
                 
@@ -783,18 +783,22 @@ class TorqueCalculator:
             
             if tree_sums:  # Check if there are any sums for this tree
                 max_value = max(tree_sums)
+                min_value = min(tree_sums)
             else:
-                max_value = 0.0  # Default value if no sums found
+                max_value = 1.0  # Default value if no sums found
+                min_value = 0.0  # Default value if no sums found
             
-            max_value_torques = np.append(max_value_torques, {"tree_id": tree["tree_id"], "max_value": max_value})
+            max_min_value_torques = np.append(max_min_value_torques, {"tree_id": tree["tree_id"], "max_value": max_value, "min_value": min_value})
 
 
         # Normalize the torques vector to a unified scale
         for tau in torques_sum:
            
-            # Find the corresponding max_value for the current tree_id
-            max_value = next(item["max_value"] for item in max_value_torques if item["tree_id"] == tau["tree_id"])
-            norm_tau = tau["sum"] / max_value
+            # Find the corresponding max_value and min_value for the current tree_id
+            max_value = next(item["max_value"] for item in max_min_value_torques if item["tree_id"] == tau["tree_id"])
+            min_value = next(item["min_value"] for item in max_min_value_torques if item["tree_id"] == tau["tree_id"])
+            
+            norm_tau = (tau["sum"] - min_value ) / ( max_value - min_value)
 
 
             # append the normalized torque to the array
