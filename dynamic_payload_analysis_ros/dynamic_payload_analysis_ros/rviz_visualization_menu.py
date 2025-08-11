@@ -127,7 +127,7 @@ class RobotDescriptionSubscriber(Node):
         
         # Add subtree to the menu 
         for i, subtree in enumerate(self.robot_handler.get_subtrees()):
-            self.menu.insert_subtree(i,subtree['tip_joint_name'], subtree["joint_names"], subtree["joint_ids"], subtree["link_names"])
+            self.menu.insert_subtree(i,subtree['tip_link_name'], subtree["joint_names"], subtree["joint_ids"], subtree["link_names"])
 
 
     def update_payload_selection(self):

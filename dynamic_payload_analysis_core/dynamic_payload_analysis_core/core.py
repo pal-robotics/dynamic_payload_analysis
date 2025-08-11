@@ -162,7 +162,7 @@ class TorqueCalculator:
                 # get the joint names in the sub-tree
                 joint_names = [self.model.names[joint_id] for joint_id in joint_tree_ids]
 
-                self.subtrees = np.append(self.subtrees, {"tree_id": cont, "link_names": link_names ,"joint_names": joint_names, "joint_ids": joint_tree_ids,"tip_joint_name": self.model.names[joint_tree_ids[-1]], "tip_joint_id": joint_tree_ids[-1], "selected_joint_id": None})
+                self.subtrees = np.append(self.subtrees, {"tree_id": cont, "link_names": link_names ,"joint_names": joint_names, "joint_ids": joint_tree_ids,"tip_link_name": link_names[-1], "tip_joint_id": joint_tree_ids[-1], "selected_joint_id": None})
                 cont += 1
     
 

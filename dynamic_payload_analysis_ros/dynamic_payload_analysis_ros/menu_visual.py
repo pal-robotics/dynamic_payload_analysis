@@ -155,7 +155,7 @@ class MenuPayload():
 
         Args:
             tree_identifier (int): Identifier of the subtree.
-            tip_tree_name (str): Name of the tip joint of the subtree.
+            tip_tree_name (str): Name of the tip link of the subtree.
             joint_names (np.ndarray): Names of the joints in the subtree.
             joint_ids (np.ndarray): IDs of the joints in the subtree.
             link_names (np.ndarray): Names of the links in the subtree. 
