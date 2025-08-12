@@ -3,9 +3,19 @@
 ## Installation
 The package requires **Pinocchio** library to be installed. You can install it using tutorials available at [Pinocchio Installation](https://github.com/stack-of-tasks/pinocchio?tab=readme-ov-file#ros)
 
+To install the package, you can clone the repository into your ROS 2 workspace and build it using `colcon`. Make sure to have the necessary dependencies installed.
+
+```bash
+git clone https://github.com/pal-robotics/dynamic_payload_analysis.git
+```
+After installing the package, build it as shown below:
+
+```bash
+colcon build --packages-select dynamic_payload_analysis_ros dynamic_payload_analysis_core
+```
 
 ## Usage
-After building the package, in order to use the dynamic payload analysis, you can run the following command:
+To use the dynamic payload analysis, you can run the following command:
 
 ```bash
 ros2 run dynamic_payload_analysis_ros node_rviz_visualization_menu
