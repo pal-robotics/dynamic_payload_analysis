@@ -21,12 +21,29 @@ To use the dynamic payload analysis, you can run the following command:
 ros2 run dynamic_payload_analysis_ros node_rviz_visualization_menu
 ```
 
+### Advanced parameters
+The ros2 node has some advanced parameters that can be set in the launch command. One of the advanced parameters is the **advanced_mode** parameter, which allows you to add a payload to any link in the kinematic tree of the selected end effector link. If this parameter is set to false, you can only add a payload to the end effector link.
+You can set the advanced parameters in the launch command as follows:
+
+```bash
+ros2 run dynamic_payload_analysis_ros node_rviz_visualization_menu --ros-args -p advanced_mode:=true
+```
+
+The second parameter is the **resolution_ik**, which allows you to set the resolution of the inverse kinematics computation. The default value is 0.20 meters, but you can set it to a different value if needed. You can set the resolution in the launch command as follows:
+
+```bash
+ros2 run dynamic_payload_analysis_ros node_rviz_visualization_menu --ros-args -p resolution_ik:=0.10
+```
+
+## Visualizing the results in RViz
+
 In order to visualize the published objects in RViz, you can add the following markers:
-- MarkerArray : **/torque_visualization**
-- MarkerArray : **/workspace_area**
-- MarkerArray : **/external_forces**
-- MarkerArray : **/maximum_payloads**
-- InteractiveMarkers : **/menu_frames**
+- MarkerArray **/torque_visualization** : *topic for visualizing the torque of the joints as labels in RViz*
+
+- MarkerArray **/workspace_area** : *topic for visualizing the workspace area as points with labels in RViz*
+- MarkerArray **/external_forces** : *topic for visualizing the external forces as arrows in RViz*
+- MarkerArray **/maximum_payloads** : *topic for visualizing the maximum payloads as points with labels in RViz*
+- InteractiveMarkers **/menu_frames** : *topic for visualizing the interactive marker menu in RViz*
 
 After adding the markers, you'll be able to see a view similar to the one shown below:
 
@@ -63,7 +80,7 @@ The script publishes a point for each joint of the selected kinematic chains, so
 </div>
 
 The script allow you to visualize the colors of the joints with different target torques:
-- **Joint limits** : the colors are based on the joint limits provided by the URDF file
+- **Torque joint limits** : the colors are based on the joint limits provided by the URDF file
 - **Maximum current torque** : the colors are based on the maximum current torques of the joints in the current payloads configuration
 
 
@@ -78,6 +95,10 @@ You can select the target torque in the interactive markers menu, as shown below
 - **Green** : the joint torque is close to zero or the minimum current torque
 - **Yellow** : the joint torque is close to the middle of the limits or the maximum current torque
 - **Red** : the joint torque is close to the maximum joint torque or the maximum current torque
+
+### Unified torque workspace tree
+
+Furthermore, if you want to visualize the more stressed configurations in terms of joint torques, you can select the namespace **unified_torque_workspace_tree_numbertree** in the topic **/workspace_area**. This will visualize the workspace area with colors gradient based on the sum of the joint torques for each configuration, so the more stressed configurations will be visualized with red points and the less stressed configurations will be visualized with green points.
 
 ## Displaying of allowed configurations
 The script allows you to visualize the allowed configurations of the robot arms in the workspace area. To select one of the allowed configurations, you can choose the configuration from the sub-menu of the **Compute workspace** button, as shown below:
@@ -102,16 +123,4 @@ Furthermore, the maximum payloads for each valid configuration are displayed in 
 <img src="images/maximum_payloads.png" alt="Maximum Payloads Selection" width="600"/>
 </div>
 
-## Advanced parameters
-The ros2 node has some advanced parameters that can be set in the launch command. One of the advanced parameters is the **advanced_mode** parameter, which allows you to add a payload to any link in the kinematic tree of the selected end effector link. If this parameter is set to false, you can only add a payload to the end effector link.
-You can set the advanced parameters in the launch command as follows:
 
-```bash
-ros2 run dynamic_payload_analysis_ros node_rviz_visualization_menu --ros-args -p advanced_mode:=true
-```
-
-The second parameter is the **resolution_ik**, which allows you to set the resolution of the inverse kinematics computation. The default value is 0.20 meters, but you can set it to a different value if needed. You can set the resolution in the launch command as follows:
-
-```bash
-ros2 run dynamic_payload_analysis_ros node_rviz_visualization_menu --ros-args -p resolution_ik:=0.10
-```
