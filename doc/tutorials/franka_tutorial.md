@@ -42,9 +42,14 @@ You can find the necessary URDF files in the corrisponding repository: [Franka U
 1. Right-click on the interactive markers to open a menu where you can select which kinematic chains you want to analyze by selecting the corresponding end effector link in the sub-menu.
     For Franka robot, the main kinematic chain is:
     - **arm**: Arm kinematic chain, with the following possible end effector links:
-        - **torso_lift_link**
-        - **head_link_1**
-        - **head_link_2**
+        - **fer_link_1**
+        - **fer_link_2**
+        - **fer_link_3**
+        - **fer_link_4**
+        - **fer_link_5**
+        - **fer_link_6**
+        - **fer_link_7**
+        - **fer_leftfinger**
 
 2. After selecting the kinematic chains, you can add a payload to the end effector link or to any link in its kinematic tree (only if the advanced parameter is enabled). This step is not necessary, if you just want to visualize the workspace area without adding a payload.
 
@@ -55,7 +60,7 @@ You can find the necessary URDF files in the corrisponding repository: [Franka U
     When visualizing the workspace area, to analyze the requirement for a specific joint, you can select the corresponding namespace in the interactive markers menu.  
 
     <div style="text-align: center;">
-    <img src="images/namespaces_tiago_pro.png" alt="Workspace Area" width="600"/>
+    <img src="images/namespaces_franka.png" alt="Workspace Area" width="600"/>
     </div>
-    In the image above, you can see the namespaces for the right arm joints, where each namespace has points representing the reachable positions of the end effector link selected in the right arm kinematic chain, and the color of the points represents the amount of torque for that joint in the different reachable positions.
+    In the image above, you can see the namespaces for the arm joints, where each namespace has points representing the reachable positions of the end effector link selected in the right arm kinematic chain, and the color of the points represents the amount of torque for that joint in the different reachable positions.
 
