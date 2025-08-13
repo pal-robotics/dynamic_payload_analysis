@@ -408,8 +408,8 @@ class TorqueCalculator:
         configurations = []
         
         # Iterate over the range to compute all configurations
-        for x in np.arange(-range/2, range/2 , resolution):
-            for y in np.arange(-range/2, range/2 , resolution):
+        for x in np.arange(-range, range , resolution):
+            for y in np.arange(-range, range , resolution):
                 for z in np.arange(-range/2, range , resolution):
                     target_position = pin.SE3(np.eye(3), np.array([x, y, z]))
                     new_q = self.compute_inverse_kinematics(q, target_position, end_joint_id)
