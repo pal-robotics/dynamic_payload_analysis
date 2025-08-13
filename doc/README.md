@@ -1,8 +1,9 @@
 # Documentation
 
-## Installation
-The package requires **Pinocchio** library to be installed. You can install it using tutorials available at [Pinocchio Installation](https://github.com/stack-of-tasks/pinocchio?tab=readme-ov-file#ros)
+## Requirements and dependencies
+This package is tested with ROS 2 Humble and it requires **Pinocchio** library to be installed. You can install it using tutorials available at [Pinocchio Installation](https://github.com/stack-of-tasks/pinocchio?tab=readme-ov-file#ros)
 
+## Compiling from source
 To install the package, you can clone the repository into your ROS 2 workspace and build it using `colcon`. Make sure to have the necessary dependencies installed.
 
 ```bash
@@ -14,7 +15,7 @@ After installing the package, build it as shown below:
 colcon build --packages-select dynamic_payload_analysis_ros dynamic_payload_analysis_core
 ```
 
-## Usage
+# Usage
 To use the dynamic payload analysis, you can run the following command:
 
 ```bash
@@ -51,6 +52,9 @@ After adding the markers, you'll be able to see a view similar to the one shown 
 <img src="images/photo_overview.png" alt="Overview" width="600"/>
 </div>
 
+Furthermore, the node publishes the joint states of the robot in the **/joint_states** topic, so you can visualize the joint states in RViz as well.
+Make sure to remove other nodes that publish the joint states of the robot, as they can interfere with the visualization of the dynamic payload analysis.
+
 ### Calculating the workspace area
 1) With a right click on the interactive markers, you can open a menu to select which kinematic chains you want to analyze by selecting the corresponding end effector link in the sub-menu. The menu will look like this:
 
@@ -72,7 +76,7 @@ After adding the markers, you'll be able to see a view similar to the one shown 
 <img src="images/photo_workspace.png" alt="Workspace Area" width="600"/>
 </div>
 
-## Visualization logic
+# Visualization logic
 The position of visualized points represents the selected end points (link) of the robot kinematic chains and the color of the point represents the amount of torque based on different target torque. <br>
 The script publishes a point for each joint of the selected kinematic chains, so in order to visualize only the color of a specific joint you can select only the namespace related to that joint in the interactive markers menu, as shown below:
 <div style="text-align: center;">
@@ -97,7 +101,6 @@ You can select the target torque in the interactive markers menu, as shown below
 - **Red** : the joint torque is close to the maximum joint torque or the maximum current torque
 
 ### Unified torque workspace tree
-
 Furthermore, if you want to visualize the more stressed configurations in terms of joint torques, you can select the namespace **unified_torque_workspace_tree_numbertree** in the topic **/workspace_area**. This will visualize the workspace area with colors gradient based on the sum of the joint torques for each configuration, so the more stressed configurations will be visualized with red points and the less stressed configurations will be visualized with green points.
 
 ## Displaying of allowed configurations
@@ -122,5 +125,12 @@ Furthermore, the maximum payloads for each valid configuration are displayed in 
 <div style="text-align: center;">
 <img src="images/maximum_payloads.png" alt="Maximum Payloads Selection" width="600"/>
 </div>
+
+# Tutorials for different robots
+- [Tiago pro](tutorials/tiago_pro_tutorial.md)
+- [Talos](tutorials/talos_tutorial.md)
+- [Unitree H1](tutorials/H1_tutorial.md)
+- [Franka Robot](tutorials/franka_tutorial.md)
+- [UR_robots](tutorials/ur_robots_tutorial.md)
 
 
