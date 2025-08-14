@@ -91,7 +91,7 @@ class TorqueCalculator:
 
         # Iterate through all joints in the robot model to find mimic joints
         for joint in robot.joints:
-            if joint.mimic is not None:
+            if joint.mimic:
                 # Add the mimic joint name to the list
                 self.mimic_joint_names.append(joint.name)
                 # Add the mimicked joint name to the list
@@ -131,16 +131,11 @@ class TorqueCalculator:
         This method is used to compute the sub-trees of the robot model
         """
         
-        ## build subtrees: 
-        #print("## Building subtrees ...")
-        # First, find all the tip joints : joints that are the leaves of the kinematic chain:
         tip_joints = []
         for id in range(0, self.model.njoints):
           if len(self.model.subtrees[id]) == 1:
             tip_joints += [id]
         
-        #print("Total number of kinematic trees: ", len(tip_joints)
-        #print("Tip joints : ", tip_joints)
         self.subtrees = np.array([], dtype=object)
         cont = 0
         for i, jointID in enumerate(tip_joints):
@@ -502,7 +497,7 @@ class TorqueCalculator:
                     # user selects the joint later 
                 
                     
-            if configuration["configurations"] is not None and tree["selected_joint_id"] is not None:
+            if configuration["configurations"] and tree["selected_joint_id"]:
                 # Verify the configurations to check if they are valid
                 valid_configurations = self.verify_configurations(configuration["configurations"], masses, checked_frames, tree["tree_id"], tree["selected_joint_id"])
                 
