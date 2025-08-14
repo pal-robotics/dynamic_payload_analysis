@@ -38,6 +38,11 @@ class RobotDescriptionSubscriber(Node):
         # add parameter for the node to set the resolution of IK calculations
         self.declare_parameter('resolution_ik', 0.20)
 
+        # add parameter for the node to set the range of the workspace area
+        self.declare_parameter('workspace_range', 2.0)
+
+        self.range_ik = self.get_parameter('workspace_range').get_parameter_value().double_value
+
         self.resolution_ik = self.get_parameter('resolution_ik').get_parameter_value().double_value
         
         
@@ -216,7 +221,7 @@ class RobotDescriptionSubscriber(Node):
         """
         # if the user choose to compute the workspace area then compute the valid configurations
         if self.menu.get_workspace_state():
-            self.valid_configurations = self.robot_handler.get_valid_workspace(range = 2,resolution= self.resolution_ik, masses = self.masses, checked_frames = self.checked_frames)
+            self.valid_configurations = self.robot_handler.get_valid_workspace(range = self.range_ik,resolution= self.resolution_ik, masses = self.masses, checked_frames = self.checked_frames)
 
             # compute the maximum payloads for the valid configurations
             self.valid_configurations = self.robot_handler.compute_maximum_payloads(self.valid_configurations)
