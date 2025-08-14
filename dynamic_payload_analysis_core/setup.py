@@ -19,13 +19,6 @@ setup(
     tests_require=['pytest'],
     install_requires=[
         'setuptools',
-        'numpy',
-        'urdf-parser-py>=0.0.4',
-        'math',
-        'typing',
-        'pathlib',
-        'tempfile',
-        'os',
     ],
     entry_points={
         'console_scripts': [
