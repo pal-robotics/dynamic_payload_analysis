@@ -165,53 +165,54 @@ class RobotDescriptionSubscriber(Node):
         """
         Publish the gravity force on the frame with id `id_force`.
         """
-        external_force_array = MarkerArray()
-        
-        for frame in self.menu.get_item_state():
-
-            id_force = self.robot_handler.get_parent_joint_id(frame["name"])
+        if self.menu is not None:
+            external_force_array = MarkerArray()
             
-            # use the selected configuration from the menu to get the right joint placement 
-            if self.selected_configuration is not None:
-                joint_position = self.robot_handler.get_joint_placement(id_force,self.valid_configurations[self.selected_configuration]["config"])
-            else:
-                joint_position = self.robot_handler.get_joint_placement(id_force,self.robot_handler.get_zero_configuration())
+            for frame in self.menu.get_item_state():
 
-            arrow_force = Marker()
+                id_force = self.robot_handler.get_parent_joint_id(frame["name"])
+                
+                # use the selected configuration from the menu to get the right joint placement 
+                if self.selected_configuration is not None:
+                    joint_position = self.robot_handler.get_joint_placement(id_force,self.valid_configurations[self.selected_configuration]["config"])
+                else:
+                    joint_position = self.robot_handler.get_joint_placement(id_force,self.robot_handler.get_zero_configuration())
 
-            arrow_force.header.frame_id = self.robot_handler.get_root_name()
-            arrow_force.header.stamp = Time()
-            arrow_force.ns = "external_force"
-            arrow_force.id = id_force
-            arrow_force.type = Marker.ARROW
+                arrow_force = Marker()
 
-            # add the arrow if the frame is checked or delete it if not
-            if frame["checked"]:
-                arrow_force.action = Marker.ADD
-            else:
-                arrow_force.action = Marker.DELETE
+                arrow_force.header.frame_id = self.robot_handler.get_root_name()
+                arrow_force.header.stamp = Time()
+                arrow_force.ns = "external_force"
+                arrow_force.id = id_force
+                arrow_force.type = Marker.ARROW
 
-            arrow_force.scale.x = 0.20   # Length of the arrow
-            arrow_force.scale.y = 0.05   # Width of the arrow
-            arrow_force.scale.z = 0.05   # Height of the arrow
-            arrow_force.color.a = 1.0  # Alpha
-            arrow_force.color.r = 0.0
-            arrow_force.color.g = 0.0  # Green
-            arrow_force.color.b = 1.0
+                # add the arrow if the frame is checked or delete it if not
+                if frame["checked"]:
+                    arrow_force.action = Marker.ADD
+                else:
+                    arrow_force.action = Marker.DELETE
 
-            # Set the position of the arrow at the joint placement
-            arrow_force.pose.position.x = joint_position["x"]
-            arrow_force.pose.position.y = joint_position["y"]
-            arrow_force.pose.position.z = joint_position["z"]
-            # Set the direction of the arrow downwards
-            arrow_force.pose.orientation.x = 0.0
-            arrow_force.pose.orientation.y = 0.7071
-            arrow_force.pose.orientation.z = 0.0
-            arrow_force.pose.orientation.w = 0.7071
+                arrow_force.scale.x = 0.20   # Length of the arrow
+                arrow_force.scale.y = 0.05   # Width of the arrow
+                arrow_force.scale.z = 0.05   # Height of the arrow
+                arrow_force.color.a = 1.0  # Alpha
+                arrow_force.color.r = 0.0
+                arrow_force.color.g = 0.0  # Green
+                arrow_force.color.b = 1.0
+
+                # Set the position of the arrow at the joint placement
+                arrow_force.pose.position.x = joint_position["x"]
+                arrow_force.pose.position.y = joint_position["y"]
+                arrow_force.pose.position.z = joint_position["z"]
+                # Set the direction of the arrow downwards
+                arrow_force.pose.orientation.x = 0.0
+                arrow_force.pose.orientation.y = 0.7071
+                arrow_force.pose.orientation.z = 0.0
+                arrow_force.pose.orientation.w = 0.7071
+                
+                external_force_array.markers.append(arrow_force)
             
-            external_force_array.markers.append(arrow_force)
-        
-        self.publisher_force.publish(external_force_array)
+            self.publisher_force.publish(external_force_array)
 
 
 
@@ -219,26 +220,27 @@ class RobotDescriptionSubscriber(Node):
         """
         Callback for timer to compute the valid workspace area.
         """
-        # if the user choose to compute the workspace area then compute the valid configurations
-        if self.menu.get_workspace_state():
-            self.valid_configurations = self.robot_handler.get_valid_workspace(range = self.range_ik,resolution= self.resolution_ik, masses = self.masses, checked_frames = self.checked_frames)
+        if self.menu is not None:
+            # if the user choose to compute the workspace area then compute the valid configurations
+            if self.menu.get_workspace_state():
+                self.valid_configurations = self.robot_handler.get_valid_workspace(range = self.range_ik,resolution= self.resolution_ik, masses = self.masses, checked_frames = self.checked_frames)
 
-            # compute the maximum payloads for the valid configurations
-            self.valid_configurations = self.robot_handler.compute_maximum_payloads(self.valid_configurations)
-            
-            # insert the valid configurations in the menu
-            self.menu.insert_dropdown_configuration(self.valid_configurations)
+                # compute the maximum payloads for the valid configurations
+                self.valid_configurations = self.robot_handler.compute_maximum_payloads(self.valid_configurations)
+                
+                # insert the valid configurations in the menu
+                self.menu.insert_dropdown_configuration(self.valid_configurations)
 
-            # clear all the workspace area markers
-            self.clear_workspace_area_markers()
+                # clear all the workspace area markers
+                self.clear_workspace_area_markers()
 
-            # set the workspace state to False to stop the computation
-            self.menu.set_workspace_state(False)
+                # set the workspace state to False to stop the computation
+                self.menu.set_workspace_state(False)
 
-        # if there are valid configurations, publish the workspace area
-        if self.valid_configurations is not None:
-            # publish the workspace area
-            self.publish_workspace_area_maximum_payload_area()
+            # if there are valid configurations, publish the workspace area
+            if self.valid_configurations is not None:
+                # publish the workspace area
+                self.publish_workspace_area_maximum_payload_area()
             
             
             
@@ -248,31 +250,32 @@ class RobotDescriptionSubscriber(Node):
         Timer to publish the selected configuration.
         This will publish the joint states of the selected configuration in the menu.
         """
-        # get the selected configuration from the menu
-        self.selected_configuration = self.menu.get_selected_configuration()
-        
-        # if there is a selected configuration, publish the joint states based on the valid configurations calculated previously
-        if self.selected_configuration is not None:
-            configs = self.robot_handler.get_position_for_joint_states(self.valid_configurations[self.selected_configuration]["config"])
-            joint_state = JointState()
-            joint_state.header.stamp = self.get_clock().now().to_msg()
+        if self.menu is not None:
+            # get the selected configuration from the menu
+            self.selected_configuration = self.menu.get_selected_configuration()
             
-            joint_state.name = [joint["joint_name"] for joint in configs]
-            joint_state.position = [joint["q"] for joint in configs]
-            
-            self.publisher_joint_states.publish(joint_state)
-
-        else:
-            if self.robot_handler is not None:
-                # if there is no selected configuration, publish the joint states with zero positions
+            # if there is a selected configuration, publish the joint states based on the valid configurations calculated previously
+            if self.selected_configuration is not None:
+                configs = self.robot_handler.get_position_for_joint_states(self.valid_configurations[self.selected_configuration]["config"])
                 joint_state = JointState()
                 joint_state.header.stamp = self.get_clock().now().to_msg()
-
-                joint_state.name = self.robot_handler.get_joints().tolist()
-                zero_config = self.robot_handler.get_position_for_joint_states(self.robot_handler.get_zero_configuration())
-                joint_state.position = [joint["q"] for joint in zero_config]
-
+                
+                joint_state.name = [joint["joint_name"] for joint in configs]
+                joint_state.position = [joint["q"] for joint in configs]
+                
                 self.publisher_joint_states.publish(joint_state)
+
+            else:
+                if self.robot_handler is not None:
+                    # if there is no selected configuration, publish the joint states with zero positions
+                    joint_state = JointState()
+                    joint_state.header.stamp = self.get_clock().now().to_msg()
+
+                    joint_state.name = self.robot_handler.get_joints().tolist()
+                    zero_config = self.robot_handler.get_position_for_joint_states(self.robot_handler.get_zero_configuration())
+                    joint_state.position = [joint["q"] for joint in zero_config]
+
+                    self.publisher_joint_states.publish(joint_state)
 
     
     def update_checked_items(self):
