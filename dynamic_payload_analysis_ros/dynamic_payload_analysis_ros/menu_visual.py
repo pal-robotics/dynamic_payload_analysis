@@ -29,7 +29,15 @@ class TorqueVisualizationType(Enum):
     MAX_CURRENT_TORQUE = 2
 
 class MenuPayload():
-    def __init__(self, node):
+    def __init__(self, node, root_joint_name : str):
+        """
+        Initialize the menu for payload selection in Rviz.
+        
+        param node: Node to create the interactive marker server.
+        param root_joint_name: Name of the root joint for the interactive marker server.
+        This is used to set the frame_id of the interactive marker.
+        """
+
         # create server for interactive markers
         self.server = InteractiveMarkerServer(node, 'menu_frames')
 
@@ -44,6 +52,9 @@ class MenuPayload():
 
         #current managed frame
         self.current_frame = None
+
+        # root joint name for the interactive marker server
+        self.root_joint_name = root_joint_name
 
         # flag to compute workspace
         self.compute_workspace = False
@@ -633,6 +644,15 @@ class MenuPayload():
         self.compute_workspace = state
 
 
+    def set_root_joint_name(self, name: str):
+        """
+        Set the root joint name for the interactive marker server.
+        
+        Args:
+            name (str): Name of the root joint.
+        """
+        self.root_joint_name = name
+
     def get_item_state(self) -> np.ndarray:
         """
         Return array of checked frames in the menu list
@@ -675,7 +695,9 @@ class MenuPayload():
         Create interactive marker
         """
         int_marker = InteractiveMarker()
-        int_marker.header.frame_id = 'base_link'
+        
+        int_marker.header.frame_id = self.root_joint_name
+        
         int_marker.pose.position.z = 2.0
         int_marker.scale = 0.5
         

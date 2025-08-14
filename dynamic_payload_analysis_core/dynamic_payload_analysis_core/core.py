@@ -41,6 +41,9 @@ class TorqueCalculator:
             # compute mimic joints 
             self.compute_mimic_joints(robot_description)
 
+            # get the root joint name
+            self.root_name = self.get_root_joint_name(robot_description)
+
             # create temporary URDF file from the robot description string
             with tempfile.NamedTemporaryFile(mode='w', suffix='.urdf', delete=False) as temp_file:
                     temp_file.write(robot_description)
@@ -66,12 +69,30 @@ class TorqueCalculator:
         # compute main trees of the robot model
         self.compute_subtrees()
 
+        
+
         # array to store all configurations for the robot model
         self.configurations = np.array([], dtype=object)
 
         # create items for each tree in the robot model
         for tree in self.subtrees:
             self.configurations = np.append(self.configurations, {"tree_id": tree["tree_id"], "configurations": None, "selected_joint_id" : None})
+
+
+    def get_root_joint_name(self, robot_description: str) -> str:
+        """
+        Get the root joint name from the robot description XML string.
+        
+        :param robot_description: Robot description in XML format provided by /robot_description topic.
+        """
+        try:
+            robot = URDF.from_xml_string(robot_description)
+            root_name = robot.get_root()
+        except Exception as e:
+            print(f"Error parsing URDF xml: {e}")
+            root_name = None
+
+        return root_name
 
     
     def compute_mimic_joints(self, urdf_xml):
@@ -497,7 +518,7 @@ class TorqueCalculator:
                     # user selects the joint later 
                 
                     
-            if configuration["configurations"] and tree["selected_joint_id"]:
+            if configuration["configurations"] is not None and tree["selected_joint_id"] is not None:
                 # Verify the configurations to check if they are valid
                 valid_configurations = self.verify_configurations(configuration["configurations"], masses, checked_frames, tree["tree_id"], tree["selected_joint_id"])
                 
@@ -1033,7 +1054,7 @@ class TorqueCalculator:
         :param q: Joint configuration vector.
         :return: Array of joint placements with names of joint, and z offset of base link.
         """
-        base_link_id = self.model.getFrameId("base_link")
+        base_link_id = self.model.getFrameId(self.root_name)
         offset_z = self.data.oMf[base_link_id].translation[2]  # Get the z offset of the base link
 
         self.update_configuration(q)
@@ -1139,6 +1160,17 @@ class TorqueCalculator:
         return np.array(frame_names, dtype=str)
     
 
+    def get_root_name(self) -> str:
+        """
+        Get the name of the root frame of the robot model.
+        
+        :return: Name of the root frame.
+        """
+        
+        if self.root_name is None:
+            raise ValueError("Root name is not set")
+        
+        return self.root_name
 
     def get_parent_joint_id(self, frame_name : str) -> int:
         """

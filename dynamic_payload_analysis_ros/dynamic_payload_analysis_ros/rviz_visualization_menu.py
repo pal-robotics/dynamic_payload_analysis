@@ -48,8 +48,8 @@ class RobotDescriptionSubscriber(Node):
             qos_profile=rclpy.qos.QoSProfile( durability=rclpy.qos.DurabilityPolicy.TRANSIENT_LOCAL, depth = 1)
         )
 
-        # menu for selecting frames to apply payload
-        self.menu = MenuPayload(self)
+        # object to handle interactive markers in RViz
+        self.menu = None
 
         # Publisher for external force
         self.publisher_force = self.create_publisher(MarkerArray, '/external_forces', 10)
@@ -123,6 +123,10 @@ class RobotDescriptionSubscriber(Node):
         self.robot_handler = TorqueCalculator(robot_description = msg.data)
         self.robot_handler.print_active_joint()
         self.robot_handler.print_frames()
+
+        if self.menu is None:
+            # menu for selecting frames to apply payload
+            self.menu = MenuPayload(self, self.robot_handler.get_root_name())
         
         # Add subtree to the menu 
         for i, subtree in enumerate(self.robot_handler.get_subtrees()):
@@ -170,7 +174,7 @@ class RobotDescriptionSubscriber(Node):
 
             arrow_force = Marker()
 
-            arrow_force.header.frame_id = "base_link" 
+            arrow_force.header.frame_id = self.robot_handler.get_root_name()
             arrow_force.header.stamp = Time()
             arrow_force.ns = "external_force"
             arrow_force.id = id_force
@@ -270,20 +274,21 @@ class RobotDescriptionSubscriber(Node):
         """
         Function to update the external forces based on the checked frames in the menu and joint selection in the subtree menu.   
         """
-        # create the array with only the checked frames (with external force applied)
-        self.checked_frames = np.array([check_frame["name"] for check_frame in self.menu.get_item_state() if check_frame['checked']])
-        
-        if len(self.checked_frames) != 0:
-            # create the array with the masses of the checked frames
-            self.masses = np.array([check_frame["payload"] for check_frame in self.menu.get_item_state() if check_frame['checked']])
-        else:
-            # if there are no checked frames, set the masses to None
-            self.masses = None
+        if self.menu is not None:
+            # create the array with only the checked frames (with external force applied)
+            self.checked_frames = np.array([check_frame["name"] for check_frame in self.menu.get_item_state() if check_frame['checked']])
+            
+            if len(self.checked_frames) != 0:
+                # create the array with the masses of the checked frames
+                self.masses = np.array([check_frame["payload"] for check_frame in self.menu.get_item_state() if check_frame['checked']])
+            else:
+                # if there are no checked frames, set the masses to None
+                self.masses = None
 
-        selected_joint_ids = [[joint["tree"], joint["selected_joint_id"]] for joint in self.menu.get_joint_tree_selection()]
-        for tree_id, joint_id in selected_joint_ids:
-            # set the joint tree selection in the robot based on the selected joints in the menu
-            self.robot_handler.set_joint_tree_selection(tree_id, joint_id)
+            selected_joint_ids = [[joint["tree"], joint["selected_joint_id"]] for joint in self.menu.get_joint_tree_selection()]
+            for tree_id, joint_id in selected_joint_ids:
+                # set the joint tree selection in the robot based on the selected joints in the menu
+                self.robot_handler.set_joint_tree_selection(tree_id, joint_id)
         
 
 
@@ -351,7 +356,7 @@ class RobotDescriptionSubscriber(Node):
         for i, (t, joint) in enumerate(zip(torque, joints_position)):
             if "gripper" not in joint['name']:
                 marker = Marker()
-                marker.header.frame_id = "base_link"
+                marker.header.frame_id = self.robot_handler.get_root_name()
                 marker.header.stamp = Time()
                 marker.ns = "torque_visualization"
                 marker.id = i
@@ -417,7 +422,7 @@ class RobotDescriptionSubscriber(Node):
             
             # create the label for the end point (end effector position) of the valid configuration
             marker_point_name = Marker()
-            marker_point_name.header.frame_id = "base_link"
+            marker_point_name.header.frame_id = self.robot_handler.get_root_name()
             marker_point_name.header.stamp = Time()
 
             marker_point_name.ns = f"labels_workspace_area__tree_{valid_config['tree_id']}"
@@ -452,7 +457,7 @@ class RobotDescriptionSubscriber(Node):
                 # print only the points for the corrisponding tree_id of the valid configuration
                 if self.robot_handler.verify_member_tree(valid_config["tree_id"],joint_pos["id"]): 
                     point = Marker()
-                    point.header.frame_id = "base_link"
+                    point.header.frame_id = self.robot_handler.get_root_name()
                     point.header.stamp = Time()
                     point.ns = joint_pos["name"]
                     point.id = cont
@@ -486,7 +491,7 @@ class RobotDescriptionSubscriber(Node):
         # this is used to visualize the workspace area with the unified torques for each configuration
         for i, unified_config in enumerate(unified_configurations_torque):
             marker_point = Marker()
-            marker_point.header.frame_id = "base_link"
+            marker_point.header.frame_id = self.robot_handler.get_root_name()
             marker_point.header.stamp = Time()
             marker_point.ns = f"unified_torque_workspace_tree_{unified_config['tree_id']}"
             marker_point.id = i
@@ -561,7 +566,7 @@ class RobotDescriptionSubscriber(Node):
             
             # create the label for the end point (end effector position)
             marker_point_name = Marker()
-            marker_point_name.header.frame_id = "base_link"
+            marker_point_name.header.frame_id = self.robot_handler.get_root_name()
             marker_point_name.header.stamp = Time()
 
             marker_point_name.ns = f"label_payloads_tree_{valid_config['tree_id']}"
@@ -590,7 +595,7 @@ class RobotDescriptionSubscriber(Node):
             
              
             point = Marker()
-            point.header.frame_id = "base_link"
+            point.header.frame_id = self.robot_handler.get_root_name()
             point.header.stamp = Time()
             point.ns = f"max_payloads_tree_{valid_config['tree_id']}"
             point.id = i
