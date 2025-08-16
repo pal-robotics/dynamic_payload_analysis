@@ -14,12 +14,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import sys
 import numpy as np
 
 from interactive_markers import InteractiveMarkerServer
 from interactive_markers import MenuHandler
-import rclpy
 from visualization_msgs.msg import InteractiveMarker
 from visualization_msgs.msg import InteractiveMarkerControl
 from visualization_msgs.msg import Marker
@@ -31,12 +29,23 @@ class TorqueVisualizationType(Enum):
     MAX_CURRENT_TORQUE = 2
 
 class MenuPayload():
-    def __init__(self, node):
+    def __init__(self, node, root_joint_name : str):
+        """
+        Initialize the menu for payload selection in Rviz.
+        
+        param node: Node to create the interactive marker server.
+        param root_joint_name: Name of the root joint for the interactive marker server.
+        This is used to set the frame_id of the interactive marker.
+        """
+
         # create server for interactive markers
         self.server = InteractiveMarkerServer(node, 'menu_frames')
 
-        # array to store the checked orunchecked frames and payload selection
+        # array to store the checked or unchecked frames for payload selection
         self.frames_selection = np.array([],dtype=object)
+
+        # array to store the selected frame in the subtree menu
+        self.subtree_selection = np.array([], dtype=object)
 
         # create handler for menu
         self.menu_handler = MenuHandler()
@@ -44,14 +53,20 @@ class MenuPayload():
         #current managed frame
         self.current_frame = None
 
+        # root joint name for the interactive marker server
+        self.root_joint_name = root_joint_name
+
         # flag to compute workspace
         self.compute_workspace = False
 
         # variable to store the selected configuration to display in Rviz
         self.selected_configuration = None
 
+        # variable used as identifier for the payload selection menu items
+        self.identifier = "id_payload" 
+
         # payload mass selection array
-        self.payload_selection = np.array([0.1, 0.2, 0.3, 0.4, 0.5, 1, 1.5, 1.8, 2.0, 2.5, 3.0, 3.5], dtype=float)
+        self.payload_selection = np.array([0.1, 0.2, 0.3, 0.4, 0.5, 1, 1.5, 1.8, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0, 5.5], dtype=float)
 
         # variable to store selection between torque limits or max torque in the current configuration for color visualization
         self.torque_color = TorqueVisualizationType.TORQUE_LIMITS # default is torque limits
@@ -62,12 +77,23 @@ class MenuPayload():
         # insert the reset payload button 
         self.reset = self.menu_handler.insert('Reset payloads', parent=self.root_frames, callback=self.callback_reset)
         
+        # insert label for the color menu selection
+        self.label_color_selection = self.menu_handler.insert('Select torque visualization color :',callback=self.callback_label)
+
         # insert the checker for visualization color choice between torque limits or max torque in the current configuration
         self.torque_limits_checker = self.menu_handler.insert('Torque limits',command=str(TorqueVisualizationType.TORQUE_LIMITS.value) , callback=self.callback_color_selection)
         self.max_torque_checker = self.menu_handler.insert('Max torque', command=str(TorqueVisualizationType.MAX_CURRENT_TORQUE.value) , callback=self.callback_color_selection)
 
+        # set visible false for the torque limits and max torque checkboxes, they will be displayed only when configurations are inserted in the menu
         self.menu_handler.setVisible(self.torque_limits_checker, False)
         self.menu_handler.setVisible(self.max_torque_checker, False)
+        self.menu_handler.setVisible(self.label_color_selection, False)
+
+        # set the visibility of the workspace button to false, it will be displayed only when the user selects at least one tree
+        self.menu_handler.setVisible(self.workspace_button, False)
+        
+        # label for tree selection
+        self.label_tree_selection = self.menu_handler.insert('Select end effector point for each tree :', callback=self.callback_tree_selection)
         
 
         self.make_menu_marker('menu_frames')
@@ -78,22 +104,172 @@ class MenuPayload():
 
     def insert_frame(self, name):
         """
-        Insert a new item(frame) in the checkbox menu of frames.
+        Insert a new item(frame) in the checkbox menu of frames for payload selection.
 
         Args:
             name (str) : name of the frame  
         """
-        last_item = self.menu_handler.insert(name, parent=self.root_frames, callback=self.callback_selection)
+        last_item = self.menu_handler.insert(name, parent=self.root_frames,command=self.identifier, callback=self.callback_selection)
         self.menu_handler.setCheckState(last_item, MenuHandler.UNCHECKED)
         self.menu_handler.setVisible(last_item, True)
         
+        # flag to check if the item is already in the checked frames array
+        flag = False
+
         # add the item to the checked frames array in order to keep track of the checked items
-        self.frames_selection = np.append(self.frames_selection, {"name": name, "checked" : False, "payload" : 0.0} )
+        for i, item in enumerate(self.frames_selection):
+            if item['name'] == name:
+                # if the item is already in the array, we need to update it as default
+                self.frames_selection[i] = {"name": item['name'], "checked": False, "payload": 0.0}
+                flag = True
+                break
+        
+        if flag is False:
+            # if the item is not in the array, we need to add it
+            self.frames_selection = np.append(self.frames_selection, {"name": name, "checked" : False, "payload" : 0.0} )
+
+        # apply changes
+        self.menu_handler.reApply(self.server)
+        self.server.applyChanges()
+
+    
+    def remove_frame(self, name):
+        """
+        Remove a item(frame) in the checkbox menu of frames for payload selection.
+
+        Args:
+            name (str) : name of the frame  
+        """
+        # iterate through the menu entries to find the item with the specified name and identifier
+        # identifier is used to identify the item in the sub menu of payload selection
+        for i, item in self.menu_handler.entry_contexts_.items():
+            if item.title == name and item.command == self.identifier:
+                self.menu_handler.setCheckState(i, MenuHandler.UNCHECKED)
+                self.menu_handler.setVisible(i, False)
+        
+        # update the frames_selection array to set the item as default value
+        for i, item in enumerate(self.frames_selection):
+             if item['name'] == name:
+                self.frames_selection[i] = {"name": item['name'], "checked": False, "payload": 0.0}
+                break
+       
+        # apply changes
+        self.menu_handler.reApply(self.server)
+        self.server.applyChanges()
+
+    
+    def insert_subtree(self, tree_identifier : int,tip_tree_name : str, joint_names : np.ndarray, joint_ids : np.ndarray, link_names : np.ndarray):
+        """
+        Insert a new item(subtree) in the checkbox menu of frames.
+
+        Args:
+            tree_identifier (int): Identifier of the subtree.
+            tip_tree_name (str): Name of the tip link of the subtree.
+            joint_names (np.ndarray): Names of the joints in the subtree.
+            joint_ids (np.ndarray): IDs of the joints in the subtree.
+            link_names (np.ndarray): Names of the links in the subtree. 
+        """
+        last_item = self.menu_handler.insert(f"Tree: [{tip_tree_name}]",command= str(tree_identifier), callback=self.callback_tree_selection)
+        self.menu_handler.setCheckState(last_item, MenuHandler.UNCHECKED)
+        self.menu_handler.setVisible(last_item, True)
+
+        joints_list = np.array([], dtype=object)
+
+        for joint_name,id,link_name in zip(joint_names, joint_ids, link_names):
+            # insert the joint as a sub-menu of the subtree
+            last_entry = self.menu_handler.insert(f"{link_name}", parent=last_item, command=str(last_item), callback=self.callback_joint_tree_selection)
+            self.menu_handler.setCheckState(last_entry, MenuHandler.UNCHECKED)
+            self.menu_handler.setVisible(last_entry, True)
+            joints_list = np.append(joints_list,{"joint_name" : joint_name, "joint_id" : id,"link_name" : link_name})
+        
+        self.subtree_selection = np.append(self.subtree_selection, {"tree" : tree_identifier, "joints" : joints_list, "selected_joint_id": None})
 
         # apply changes
         self.menu_handler.reApply(self.server)
         self.server.applyChanges()
     
+
+    def callback_tree_selection(self, feedback):
+        """
+        Callback for the tree selection, Made only to avoid the error of missing callback.
+        
+        Args:
+            feedback: Feedback from the menu selection.
+        """
+        pass
+                
+
+    def callback_label(self, feedback):
+        """
+        Callback for the label of color selection. Made only to avoid the error of missing callback.
+        
+        Args:
+            feedback: Feedback from the menu selection.
+        """
+        pass
+
+    def callback_joint_tree_selection(self, feedback):
+        """
+        Callback for the joint selection in the subtree to change the selection of the joints.
+        
+        Args:
+            feedback: Feedback from the menu selection.
+        """
+
+        # reset the sub-menu configuration if the user change joint selection 
+        self.reset_sub_menu_configuration()
+
+        # get the handle of the selected item (id)
+        handle = feedback.menu_entry_id
+        # get the title of the selected item (it contains joint name)
+        title = self.menu_handler.getTitle(handle)
+
+         # get the entry object from the menu handler with all the informations about the item (command field is used to store the parent id)
+        config_context = self.menu_handler.entry_contexts_[handle]
+
+        # get the parent id of the selected joint stored in the command field (parent == tree identifier)
+        parent_id = int(config_context.command)
+        # get the entry object of the parent
+        parent_context = self.menu_handler.entry_contexts_[parent_id]
+        
+        # reset all the selections in the tree sub-menu if the joint was already selected
+        if self.menu_handler.getCheckState(handle) == MenuHandler.CHECKED:
+            parent_context.check_state = MenuHandler.UNCHECKED
+            self.menu_handler.setCheckState(handle, MenuHandler.UNCHECKED)
+
+            self.update_joint_tree_selection(int(parent_context.command), title)
+        else:
+            # set the checkbox as checked
+            parent_context.check_state = MenuHandler.CHECKED
+            
+            # reset all the selections in the tree sub-menu
+            # check if a item is already checked, if so remove it and set to unchecked to prevent multiple joint selection in the same menu
+            for item in parent_context.sub_entries:
+                # check if the item is checked
+                if self.menu_handler.getCheckState(item) == MenuHandler.CHECKED:
+                    # if the configuration is already checked, we need to uncheck it
+                    self.menu_handler.setCheckState(item, MenuHandler.UNCHECKED)
+            
+            # set the selected configuration checkbox as checked
+            self.menu_handler.setCheckState(handle, MenuHandler.CHECKED)
+
+            # set the joint as checked
+            self.update_joint_tree_selection(int(parent_context.command), title)
+        
+        # check if there is at least one joint selected in the subtree menu
+        if self.get_status_joint_tree():
+            # set the workspace button visible if there is at least one joint selected in the subtree menu
+            self.menu_handler.setVisible(self.workspace_button, True)
+        else:
+            # hide the workspace button if there is no joint selected in the subtree menu
+            self.menu_handler.setVisible(self.workspace_button, False)
+
+        # apply changes
+        self.menu_handler.reApply(self.server)
+        self.server.applyChanges()
+
+
+
     def callback_color_selection(self, feedback):
         """
         Callback for torque selection type to change the visualization color in Rviz.
@@ -142,15 +318,20 @@ class MenuPayload():
             configuration (np.ndarray): Array of configuration to be displayed in the dropdown.
         """
 
+        if configuration.size == 0:
+            return
+
         for i, item in enumerate(configuration):
             # insert the parent in the command field to keep track of the parent id
-            last_entry = self.menu_handler.insert(f"Configuration {i} | arm: " + item["arm"], parent=self.workspace_button, command=str(self.workspace_button), callback=self.callback_configuration_selection)
+            last_entry = self.menu_handler.insert(f"Configuration {i} | tree: {item['tree_id']} | max payload : " + f"{item['max_payload']:.2f} kg" , parent=self.workspace_button, command=str(self.workspace_button), callback=self.callback_configuration_selection)
             self.menu_handler.setCheckState(last_entry, MenuHandler.UNCHECKED)
             self.menu_handler.setVisible(last_entry, True)
         
         # set visible true for color selection and put the default check state
         self.menu_handler.setVisible(self.torque_limits_checker, True)
         self.menu_handler.setVisible(self.max_torque_checker, True)
+        self.menu_handler.setVisible(self.label_color_selection, True)
+        
         self.menu_handler.setCheckState(self.torque_limits_checker, MenuHandler.CHECKED)
         self.menu_handler.setCheckState(self.max_torque_checker, MenuHandler.UNCHECKED)
 
@@ -208,35 +389,29 @@ class MenuPayload():
             if item['checked']:
                 item = {"name": item['name'], "checked": False, "payload": 0.0}
                 self.frames_selection[i] = item
-                
-        # reset the frames selection menu (i = number of entry, item = object with name, sub entries, etc.)
-        for i, item in self.menu_handler.entry_contexts_.items():
-            if i == 1:
-                # skip the root item (payload reset)
-                continue
+        
+        
+        self.reset_sub_menu_configuration()
+
+        for item in self.menu_handler.entry_contexts_[self.root_frames].sub_entries:
+            for sub_item in self.menu_handler.entry_contexts_[item].sub_entries:
+                self.menu_handler.setVisible(sub_item, False)
+                self.menu_handler.setCheckState(sub_item, MenuHandler.UNCHECKED)
             
-            # check if the item(frame) has sub entries (payloads selection)
-            if item.sub_entries:
-                # if the frame has payloads selection, we need to remove it
-                for sub_item in item.sub_entries:
-                    self.menu_handler.setVisible(sub_item, False)
-                    self.menu_handler.setCheckState(sub_item, MenuHandler.UNCHECKED)
-            
-             # check if the item is the reset payloads or compute workspace item and skip the unchanging of the check state
-            if item.title == "Reset payloads" or item.title == "Compute workspace":
-                continue
-                
-            # set the checked of frame to unchecked 
-            self.menu_handler.setCheckState(i,MenuHandler.UNCHECKED)
+            if item != self.reset:
+                # set the checked of frame to unchecked 
+                self.menu_handler.setCheckState(item,MenuHandler.UNCHECKED)
+        
         
         # reset the selected configuration
         self.selected_configuration = None
-
-        # hide the torque limits and max torque checkboxes when there is no configuration selected
+        
+        #hide the torque limits and max torque checkboxes when there is no configuration selected
+        self.menu_handler.setVisible(self.label_color_selection, False)
         self.menu_handler.setVisible(self.torque_limits_checker, False)
         self.menu_handler.setVisible(self.max_torque_checker, False)
 
-        self.torque_color = TorqueVisualizationType.TORQUE_LIMITS  # reset to default torque limits
+        self.torque_color = TorqueVisualizationType.TORQUE_LIMITS  # reset to default torque limits#
 
         # reapply the menu handler and server changes
         self.menu_handler.reApply(self.server)
@@ -250,6 +425,11 @@ class MenuPayload():
         Args:
             feedback: Feedback from the menu selection.
         """
+
+        # reset the sub-menu configuration if the user change payload selection
+        self.reset_sub_menu_configuration()
+        # -------------
+
         # get name of the frame
         handle = feedback.menu_entry_id
         title = self.menu_handler.getTitle(handle)
@@ -269,8 +449,61 @@ class MenuPayload():
         # print the current state of the checked frames
         print(f"{self.get_item_state()} \n")
 
-        
     
+    def reset_sub_menu_configuration(self):
+        """
+        Function to reset the sub-menu configuration and related variables.
+        """
+        # reset calculated configurations in the workspace submenu
+        for i, item in self.menu_handler.entry_contexts_.items():
+            # check if the item is the workspace button and has sub entries and remove them from view
+            if item.sub_entries and item.title == self.menu_handler.getTitle(self.workspace_button):
+                # if the frame has payloads selection, we need to remove it
+                for sub_item in item.sub_entries:
+                    self.menu_handler.setVisible(sub_item, False)
+                    self.menu_handler.setCheckState(sub_item, MenuHandler.UNCHECKED)
+
+        # hide the torque limits and max torque checkboxes when there is no configuration selected
+        self.menu_handler.setVisible(self.torque_limits_checker, False)
+        self.menu_handler.setVisible(self.max_torque_checker, False)
+        self.menu_handler.setVisible(self.label_color_selection, False)
+
+        self.torque_color = TorqueVisualizationType.TORQUE_LIMITS  # reset to default torque limits
+
+        # reset the selected configuration
+        self.selected_configuration = None
+    
+
+    def get_status_joint_tree(self) -> bool:
+        """
+        Check if there is at least one joint selected in the subtree menu.
+        
+        Returns:
+            bool: True if at least one joint is selected, False otherwise.
+        """
+        for item in self.subtree_selection:
+            if item['selected_joint_id'] is not None:
+                return True
+
+    def update_joint_tree_selection(self, tree_identifier: int, frame_name : str):
+        """
+        Update the state of a joint in the subtree menu.
+        
+        Args:
+            tree_identifier (int): Identifier of the subtree.
+            frame_name (str): Name of the selected link in the menu.
+        """
+        
+        for item in self.subtree_selection:
+            if item['tree'] == tree_identifier:
+                for joint in item['joints']:
+                    if joint['link_name'] == frame_name and item['selected_joint_id'] != joint['joint_id']:
+                        item['selected_joint_id'] = joint['joint_id']
+                        break
+                    elif joint['link_name'] == frame_name and item['selected_joint_id'] == joint['joint_id']:
+                        item['selected_joint_id'] = None
+                        break
+
 
     def update_item(self, name, check: bool):
         """
@@ -328,6 +561,9 @@ class MenuPayload():
         Args:
             feedback: Feedback from the menu selection.
         """
+        # reset the sub-menu configuration if the user change payload selection
+        self.reset_sub_menu_configuration() 
+
         # get the handle of the selected item (id)
         handle = feedback.menu_entry_id
         # get the title of the selected item (it contains number of kg)
@@ -360,6 +596,14 @@ class MenuPayload():
         self.menu_handler.reApply(self.server)
         self.server.applyChanges()
 
+    def get_joint_tree_selection(self) -> np.ndarray:
+        """
+        Return the selected joint in the subtree menu.
+        
+        Returns:
+            np.ndarray: Array of selected joints in the subtree menu.
+        """
+        return self.subtree_selection
 
     def get_torque_color(self) -> TorqueVisualizationType:
         """
@@ -399,6 +643,15 @@ class MenuPayload():
         """
         self.compute_workspace = state
 
+
+    def set_root_joint_name(self, name: str):
+        """
+        Set the root joint name for the interactive marker server.
+        
+        Args:
+            name (str): Name of the root joint.
+        """
+        self.root_joint_name = name
 
     def get_item_state(self) -> np.ndarray:
         """
@@ -442,7 +695,9 @@ class MenuPayload():
         Create interactive marker
         """
         int_marker = InteractiveMarker()
-        int_marker.header.frame_id = 'base_link'
+        
+        int_marker.header.frame_id = self.root_joint_name
+        
         int_marker.pose.position.z = 2.0
         int_marker.scale = 0.5
         

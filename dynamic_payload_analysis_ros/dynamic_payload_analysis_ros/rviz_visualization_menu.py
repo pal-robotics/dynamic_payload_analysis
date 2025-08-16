@@ -16,15 +16,14 @@
 
 import rclpy
 from rclpy.node import Node
-from std_msgs.msg import String, ColorRGBA
-from geometry_msgs.msg import WrenchStamped, Point
+from std_msgs.msg import String
 from sensor_msgs.msg import JointState
 from dynamic_payload_analysis_core.core import TorqueCalculator
 import numpy as np
 from visualization_msgs.msg import Marker, MarkerArray
 from dynamic_payload_analysis_ros.menu_visual import MenuPayload
 from dynamic_payload_analysis_ros.menu_visual import TorqueVisualizationType
-
+from builtin_interfaces.msg import Time
 
 
 
@@ -32,6 +31,21 @@ from dynamic_payload_analysis_ros.menu_visual import TorqueVisualizationType
 class RobotDescriptionSubscriber(Node):
     def __init__(self):
         super().__init__('node_robot_description_subscriber')
+        
+        # add parameter for the node to set the expert mode or the basic mode
+        self.declare_parameter('advanced_mode', False)
+
+        # add parameter for the node to set the resolution of IK calculations
+        self.declare_parameter('resolution_ik', 0.20)
+
+        # add parameter for the node to set the range of the workspace area
+        self.declare_parameter('workspace_range', 2.0)
+
+        self.range_ik = self.get_parameter('workspace_range').get_parameter_value().double_value
+
+        self.resolution_ik = self.get_parameter('resolution_ik').get_parameter_value().double_value
+        
+        
         self.subscription = self.create_subscription(
             String,
             '/robot_description',
@@ -39,8 +53,8 @@ class RobotDescriptionSubscriber(Node):
             qos_profile=rclpy.qos.QoSProfile( durability=rclpy.qos.DurabilityPolicy.TRANSIENT_LOCAL, depth = 1)
         )
 
-        # menu for selecting frames to apply payload
-        self.menu = MenuPayload(self)
+        # object to handle interactive markers in RViz
+        self.menu = None
 
         # Publisher for external force
         self.publisher_force = self.create_publisher(MarkerArray, '/external_forces', 10)
@@ -51,8 +65,8 @@ class RobotDescriptionSubscriber(Node):
         # Pusblisher for point cloud workspace area
         self.publisher_workspace_area = self.create_publisher(MarkerArray, '/workspace_area', 10)
 
-        # Publisher for point names in the workspace area
-        self.publisher_workspace_area_names = self.create_publisher(MarkerArray, '/workspace_area_names', 10)
+        # Pusblisher for point cloud of maximum payloads in the workspace area
+        self.publisher_maximum_payloads = self.create_publisher(MarkerArray, '/maximum_payloads', 10)
 
         # subscription to joint states
         self.joint_states_subscription = self.create_subscription(JointState, '/joint_states', self.joint_states_callback, 10)
@@ -61,7 +75,7 @@ class RobotDescriptionSubscriber(Node):
         self.publisher_joint_states = self.create_publisher(JointState, '/joint_states', 10)
         
         # variable to store the object of the TorqueCalculator
-        self.robot = None
+        self.robot_handler = None
 
         # variable to store external force applied on the robot
         self.external_force = None
@@ -72,20 +86,33 @@ class RobotDescriptionSubscriber(Node):
         # variable to store masses applied on the frames
         self.masses = None
 
-        # variable to store the currente selected configuration from the workspace menu
+        # variable to store current selected links for payload selection
+        self.links = None
+
+        # variable to store the current selected configuration from the workspace menu
         self.valid_configurations = None
+
+        # id of the valid configurations to detect changes
+        self.id_current_valid_config = None
+        self.prev_id_current_valid_config = None
+
+        # variable to store markers for the workspace area and maximum payloads area
+        self.marker_points = None 
+        self.marker_max_payloads = None
 
         # variable to store if there is a selected configuration from the workspace menu to visualize
         self.selected_configuration = None
 
         # timer to compute the valid workspace area 
-        self.timer_workspace_calculation = self.create_timer(1, self.workspace_calculation)
+        self.timer_workspace_calculation = self.create_timer(1.0, self.workspace_calculation)
         # timer to publish the selected configuration in joint states
-        self.timer_publish_configuration = self.create_timer(2, self.publish_selected_configuration)
+        self.timer_publish_configuration = self.create_timer(2.0, self.publish_selected_configuration)
         # timer to calculate the external forces based on the checked frames in the menu
-        self.timer_update_checked_frames = self.create_timer(0.5, self.update_checked_frames)
+        self.timer_update_checked_items = self.create_timer(0.5, self.update_checked_items)
         # timer to publish the external forces as arrows in RViz
-        self.timer_publish_force = self.create_timer(1, self.publish_payload_force)
+        self.timer_publish_force = self.create_timer(1.0, self.publish_payload_force)
+        # timer to update items in the menu for payload selection
+        self.timer_update_payload_selection = self.create_timer(0.5, self.update_payload_selection)
 
         self.get_logger().info('Robot description subscriber node started')
 
@@ -98,62 +125,94 @@ class RobotDescriptionSubscriber(Node):
 
         self.get_logger().info('Received robot description')
 
-        self.robot = TorqueCalculator(robot_description = msg.data)
-        self.robot.print_active_joint()
-        self.robot.print_frames()
+        self.robot_handler = TorqueCalculator(robot_description = msg.data)
+        self.robot_handler.print_active_joint()
+        self.robot_handler.print_frames()
+
+        if self.menu is None:
+            # menu for selecting frames to apply payload
+            self.menu = MenuPayload(self, self.robot_handler.get_root_name())
         
-        # Add the frame to the menu for payload selection
-        for frame in self.robot.get_active_frames():
-            self.menu.insert_frame(frame)
+        # Add subtree to the menu 
+        for i, subtree in enumerate(self.robot_handler.get_subtrees()):
+            self.menu.insert_subtree(i,subtree['tip_link_name'], subtree["joint_names"], subtree["joint_ids"], subtree["link_names"])
 
-        # self.robot.print_configuration()
 
+    def update_payload_selection(self):
+        """
+        Callback function to update the payload selection in the menu.
+        """
+        if self.robot_handler is not None:
+            # Add the frame to the menu for payload selection with the advanced mode parameter
+
+            links = self.robot_handler.get_links(self.get_parameter('advanced_mode').get_parameter_value().bool_value)
+
+            for link in links:
+                if link in self.links:
+                    continue  # Skip if the link is already in the menu
+                else:
+                    self.menu.insert_frame(str(link))
+
+            # remove other links that are not in the current link selection
+            if self.links is not None:
+                for link in self.links:
+                    if link not in links:
+                        self.menu.remove_frame(str(link))
+
+            self.links = links  # Update the links to the current ones
 
     def publish_payload_force(self):
         """
         Publish the gravity force on the frame with id `id_force`.
         """
-        external_force_array = MarkerArray()
-        
-        for frame in self.menu.get_item_state():
-
-            id_force = self.robot.get_parent_joint_id(frame["name"])
-            joint_position = self.robot.get_joint_placement(id_force)
-            arrow_force = Marker()
-
-            arrow_force.header.frame_id = "base_link" 
-            arrow_force.header.stamp = self.get_clock().now().to_msg()
-            arrow_force.ns = "external_force"
-            arrow_force.id = id_force
-            arrow_force.type = Marker.ARROW
-
-            # add the arrow if the frame is checked or delete it if not
-            if frame["checked"]:
-                arrow_force.action = Marker.ADD
-            else:
-                arrow_force.action = Marker.DELETE
-
-            arrow_force.scale.x = 0.20   # Length of the arrow
-            arrow_force.scale.y = 0.05   # Width of the arrow
-            arrow_force.scale.z = 0.05   # Height of the arrow
-            arrow_force.color.a = 1.0  # Alpha
-            arrow_force.color.r = 0.0
-            arrow_force.color.g = 0.0  # Green
-            arrow_force.color.b = 1.0
-
-            # Set the position of the arrow at the joint placement
-            arrow_force.pose.position.x = joint_position["x"]
-            arrow_force.pose.position.y = joint_position["y"]
-            arrow_force.pose.position.z = joint_position["z"]
-            # Set the direction of the arrow downwards
-            arrow_force.pose.orientation.x = 0.0
-            arrow_force.pose.orientation.y = 0.7071
-            arrow_force.pose.orientation.z = 0.0
-            arrow_force.pose.orientation.w = 0.7071
+        if self.menu is not None:
+            external_force_array = MarkerArray()
             
-            external_force_array.markers.append(arrow_force)
-        
-        self.publisher_force.publish(external_force_array)
+            for frame in self.menu.get_item_state():
+
+                id_force = self.robot_handler.get_parent_joint_id(frame["name"])
+                
+                # use the selected configuration from the menu to get the right joint placement 
+                if self.selected_configuration is not None:
+                    joint_position = self.robot_handler.get_joint_placement(id_force,self.valid_configurations[self.selected_configuration]["config"])
+                else:
+                    joint_position = self.robot_handler.get_joint_placement(id_force,self.robot_handler.get_zero_configuration())
+
+                arrow_force = Marker()
+
+                arrow_force.header.frame_id = self.robot_handler.get_root_name()
+                arrow_force.header.stamp = Time()
+                arrow_force.ns = "external_force"
+                arrow_force.id = id_force
+                arrow_force.type = Marker.ARROW
+
+                # add the arrow if the frame is checked or delete it if not
+                if frame["checked"]:
+                    arrow_force.action = Marker.ADD
+                else:
+                    arrow_force.action = Marker.DELETE
+
+                arrow_force.scale.x = 0.20   # Length of the arrow
+                arrow_force.scale.y = 0.05   # Width of the arrow
+                arrow_force.scale.z = 0.05   # Height of the arrow
+                arrow_force.color.a = 1.0  # Alpha
+                arrow_force.color.r = 0.0
+                arrow_force.color.g = 0.0  # Green
+                arrow_force.color.b = 1.0
+
+                # Set the position of the arrow at the joint placement
+                arrow_force.pose.position.x = joint_position["x"]
+                arrow_force.pose.position.y = joint_position["y"]
+                arrow_force.pose.position.z = joint_position["z"]
+                # Set the direction of the arrow downwards
+                arrow_force.pose.orientation.x = 0.0
+                arrow_force.pose.orientation.y = 0.7071
+                arrow_force.pose.orientation.z = 0.0
+                arrow_force.pose.orientation.w = 0.7071
+                
+                external_force_array.markers.append(arrow_force)
+            
+            self.publisher_force.publish(external_force_array)
 
 
 
@@ -161,23 +220,28 @@ class RobotDescriptionSubscriber(Node):
         """
         Callback for timer to compute the valid workspace area.
         """
-        # if the user choose to compute the workspace area then compute the valid configurations
-        if self.menu.get_workspace_state():
-            self.valid_configurations = self.robot.get_valid_workspace(2, 0.20, "gripper_left_finger_joint", "gripper_right_finger_joint", self.masses, self.checked_frames)
+        if self.menu is not None:
+            # if the user choose to compute the workspace area then compute the valid configurations
+            if self.menu.get_workspace_state():
+                self.valid_configurations = self.robot_handler.get_valid_workspace(range = self.range_ik,resolution= self.resolution_ik, masses = self.masses, checked_frames = self.checked_frames)
+
+                # compute the maximum payloads for the valid configurations
+                self.valid_configurations = self.robot_handler.compute_maximum_payloads(self.valid_configurations)
+                
+                # insert the valid configurations in the menu
+                self.menu.insert_dropdown_configuration(self.valid_configurations)
+
+                # clear all the workspace area markers
+                self.clear_workspace_area_markers()
+
+                # set the workspace state to False to stop the computation
+                self.menu.set_workspace_state(False)
+
+            # if there are valid configurations, publish the workspace area
+            if self.valid_configurations is not None:
+                # publish the workspace area
+                self.publish_workspace_area_maximum_payload_area()
             
-            # insert the valid configurations in the menu
-            self.menu.insert_dropdown_configuration(self.valid_configurations)
-
-            # clear all the workspace area markers
-            self.clear_workspace_area_markers()
-
-            # set the workspace state to False to stop the computation
-            self.menu.set_workspace_state(False)
-
-        # if there are valid configurations, publish the workspace area
-        if self.valid_configurations is not None:
-            # publish the workspace area
-            self.publish_workspace_area(self.valid_configurations)
             
             
 
@@ -186,81 +250,89 @@ class RobotDescriptionSubscriber(Node):
         Timer to publish the selected configuration.
         This will publish the joint states of the selected configuration in the menu.
         """
-        # get the selected configuration from the menu
-        self.selected_configuration = self.menu.get_selected_configuration()
-        
-        # if there is a selected configuration, publish the joint states based on the valid configurations calculated previously
-        if self.selected_configuration is not None:
-            configs = self.robot.get_position_for_joint_states(self.valid_configurations[self.selected_configuration]["config"])
-            joint_state = JointState()
-            joint_state.header.stamp = self.get_clock().now().to_msg()
+        if self.menu is not None:
+            # get the selected configuration from the menu
+            self.selected_configuration = self.menu.get_selected_configuration()
             
-            joint_state.name = [joint["joint_name"] for joint in configs]
-            joint_state.position = [joint["q"] for joint in configs]
-            #joint_state.position =
-            self.publisher_joint_states.publish(joint_state)
-
-        else:
-            if self.robot is not None:
-                # if there is no selected configuration, publish the joint states with zero positions
+            # if there is a selected configuration, publish the joint states based on the valid configurations calculated previously
+            if self.selected_configuration is not None:
+                configs = self.robot_handler.get_position_for_joint_states(self.valid_configurations[self.selected_configuration]["config"])
                 joint_state = JointState()
                 joint_state.header.stamp = self.get_clock().now().to_msg()
-
-                joint_state.name = self.robot.get_joints().tolist()
-                zero_config = self.robot.get_position_for_joint_states(self.robot.get_zero_configuration())
-                joint_state.position = [joint["q"] for joint in zero_config]
-
+                
+                joint_state.name = [joint["joint_name"] for joint in configs]
+                joint_state.position = [joint["q"] for joint in configs]
+                
                 self.publisher_joint_states.publish(joint_state)
 
+            else:
+                if self.robot_handler is not None:
+                    # if there is no selected configuration, publish the joint states with zero positions
+                    joint_state = JointState()
+                    joint_state.header.stamp = self.get_clock().now().to_msg()
+
+                    joint_state.name = self.robot_handler.get_joints().tolist()
+                    zero_config = self.robot_handler.get_position_for_joint_states(self.robot_handler.get_zero_configuration())
+                    joint_state.position = [joint["q"] for joint in zero_config]
+
+                    self.publisher_joint_states.publish(joint_state)
+
     
-    def update_checked_frames(self):
+    def update_checked_items(self):
         """
-        Function to update the external forces based on the checked frames in the menu.    
+        Function to update the external forces based on the checked frames in the menu and joint selection in the subtree menu.   
         """
-        # create the array with only the checked frames (with external force applied)
-        self.checked_frames = np.array([check_frame["name"] for check_frame in self.menu.get_item_state() if check_frame['checked']])
+        if self.menu is not None:
+            # create the array with only the checked frames (with external force applied)
+            self.checked_frames = np.array([check_frame["name"] for check_frame in self.menu.get_item_state() if check_frame['checked']])
+            
+            if len(self.checked_frames) != 0:
+                # create the array with the masses of the checked frames
+                self.masses = np.array([check_frame["payload"] for check_frame in self.menu.get_item_state() if check_frame['checked']])
+            else:
+                # if there are no checked frames, set the masses to None
+                self.masses = None
+
+            selected_joint_ids = [[joint["tree"], joint["selected_joint_id"]] for joint in self.menu.get_joint_tree_selection()]
+            for tree_id, joint_id in selected_joint_ids:
+                # set the joint tree selection in the robot based on the selected joints in the menu
+                self.robot_handler.set_joint_tree_selection(tree_id, joint_id)
         
-        if len(self.checked_frames) != 0:
-            # create the array with the masses of the checked frames
-            self.masses = np.array([check_frame["payload"] for check_frame in self.menu.get_item_state() if check_frame['checked']])
-        else:
-            # if there are no checked frames, set the masses to None
-            self.masses = None
 
 
     def joint_states_callback(self, msg):
         """
         Callback function for the joint states topic.
         """
-        if self.robot is not None:
+        if self.robot_handler is not None:
             # if you are not using the calculated configuration from workspace, you can use the joint states to compute the torques because you don't have already the computed torques
             if self.selected_configuration is None:
                 self.positions = list(msg.position)
                 self.name_positions = list(msg.name)
-                v = msg.velocity if msg.velocity else self.robot.get_zero_velocity()
+                v = msg.velocity if msg.velocity else self.robot_handler.get_zero_velocity()
                 
                 # set the positions based on the joint states
-                q = self.robot.set_position(self.positions, self.name_positions)
-                a = self.robot.get_zero_acceleration()
+                q = self.robot_handler.set_position(self.positions, self.name_positions)
+                a = self.robot_handler.get_zero_acceleration()
 
                 # if there are no checked frames, set the external force to None
                 if len(self.checked_frames) != 0:
                     # create the external force with the masses and the checked frames
-                    self.external_force = self.robot.create_ext_force(masses=self.masses, frame_name=self.checked_frames, q=q)
+                    self.external_force = self.robot_handler.create_ext_force(masses=self.masses, frame_name=self.checked_frames, q=q)
                 else:
                     self.external_force = None
                 
                 # compute the inverse dynamics
-                tau = self.robot.compute_inverse_dynamics(q, v, a, extForce=self.external_force)
+                tau = self.robot_handler.compute_inverse_dynamics(q, v, a, extForce=self.external_force)
 
                 # check the effort limits
-                status_efforts = self.robot.check_effort_limits(tau)
+                status_efforts = self.robot_handler.check_effort_limits(tau)
 
                 # print the torques
-                self.robot.print_torques(tau)
+                self.robot_handler.print_torques(tau)
 
                 # get the positions of the joints where the torques are applied based on 
-                joints_position, offset_z = self.robot.get_joints_placements(q)
+                joints_position, offset_z = self.robot_handler.get_joints_placements(q)
 
                 # Publish the torques in RViz
                 self.publish_label_torques(tau, status_torques=status_efforts ,joints_position=joints_position)
@@ -269,9 +341,9 @@ class RobotDescriptionSubscriber(Node):
                 # if you are using the calculated configuration from workspace, you can use the valid configurations to visualize the torques labels
 
                 # get the positions of the joints where the torques are applied based on 
-                joints_position, offset_z = self.robot.get_joints_placements(self.valid_configurations[self.selected_configuration]["config"])
+                joints_position, offset_z = self.robot_handler.get_joints_placements(self.valid_configurations[self.selected_configuration]["config"])
                 # get the torques status (if the torques are within the limits)
-                status_efforts = self.robot.check_effort_limits(self.valid_configurations[self.selected_configuration]["tau"])
+                status_efforts = self.robot_handler.check_effort_limits(self.valid_configurations[self.selected_configuration]["tau"])
 
                 self.publish_label_torques(self.valid_configurations[self.selected_configuration]["tau"], status_torques=status_efforts ,joints_position=joints_position)
             
@@ -286,13 +358,14 @@ class RobotDescriptionSubscriber(Node):
             status_torques (np.ndarray): The status of the torques, True if the torque is within the limits, False otherwise
             joints_position (np.ndarray): The positions of the joints where the torques are applied
         """
+        joint_z_prev = {"pos": 0.0, "labels_count": 0}  # Variable to store the previous z position of the joint for label offset
         marker_array = MarkerArray()
+
         for i, (t, joint) in enumerate(zip(torque, joints_position)):
-            # remove the gripper joints from the visualization TODO: make it more general (with MIMIC joints)
             if "gripper" not in joint['name']:
                 marker = Marker()
-                marker.header.frame_id = "base_link"
-                marker.header.stamp = self.get_clock().now().to_msg()
+                marker.header.frame_id = self.robot_handler.get_root_name()
+                marker.header.stamp = Time()
                 marker.ns = "torque_visualization"
                 marker.id = i
                 marker.type = Marker.TEXT_VIEW_FACING
@@ -303,9 +376,18 @@ class RobotDescriptionSubscriber(Node):
                     marker.text = f"{joint['name']}: {t:.2f} Nm"
 
                 marker.action = Marker.ADD
+                
                 marker.pose.position.x = joint['x']
                 marker.pose.position.y = joint['y']
-                marker.pose.position.z = joint['z']
+
+                # method to avoid overlaps between labels 
+                if joint['z'] == joint_z_prev["pos"]:
+                    marker.pose.position.z = joint['z'] + 0.025 * joint_z_prev["labels_count"]  # Offset to avoid overlaps between labels
+                    joint_z_prev = {"pos" : joint['z'], "labels_count" : joint_z_prev["labels_count"] + 1}
+                else:
+                    marker.pose.position.z = joint['z']
+                    joint_z_prev = {"pos" : marker.pose.position.z, "labels_count" : 1}
+
                 marker.pose.orientation.w = 1.0
                 marker.scale.x = 0.03
                 marker.scale.y = 0.03
@@ -319,38 +401,39 @@ class RobotDescriptionSubscriber(Node):
                     marker.color.r = 1.0  # Red
                     marker.color.g = 0.0  # Green
                     marker.color.b = 0.0  # Blue
+                
+                
                 marker_array.markers.append(marker)
         
         self.publisher_rviz_torque.publish(marker_array)
-        
+    
 
-    def publish_workspace_area(self, valid_configs: np.ndarray ):
+
+    def generate_workspace_markers(self):
         """
-        Publish the workspace area in RViz using points and labels for the end points.
-
-        Args:
-            valid_configs (np.ndarray): Current valid configurations in the workspace of the robot.
+        Generate markers for the workspace area in RViz.
+        This function creates markers for the end effector positions of the valid configurations and visualizes them
+        with colors based on the normalized torques for each joint.
+        It also creates labels for the end points of the valid configurations.
         """
-        # Create a MarkerArray to visualize the number of configuration of a specific point in the workspace
-        marker_point_names = MarkerArray()
 
-        # Create a Marker for the workspace area using points
-        marker_points = MarkerArray()
+        # Create a Marker for the workspace area using points and labels
+        marker_ws = MarkerArray()
 
         # calculate the maximum torques for each joint in the current valid configurations for each arm only if the user selected the max current torque visualization
         if self.menu.get_torque_color() == TorqueVisualizationType.MAX_CURRENT_TORQUE:
-            max_torque_for_joint_left, max_torque_for_joint_right = self.robot.get_maximum_torques(valid_configs)
-
+            max_torque_for_joint = self.robot_handler.get_maximum_torques(self.valid_configurations)
+        
         cont = 0
         # Iterate through the valid configurations and create markers
-        for i, valid_config in enumerate(valid_configs):
+        for i, valid_config in enumerate(self.valid_configurations):
             
             # create the label for the end point (end effector position) of the valid configuration
             marker_point_name = Marker()
-            marker_point_name.header.frame_id = "base_link"
-            marker_point_name.header.stamp = self.get_clock().now().to_msg()
+            marker_point_name.header.frame_id = self.robot_handler.get_root_name()
+            marker_point_name.header.stamp = Time()
 
-            marker_point_name.ns = f"workspace_area_{valid_config['arm']}_arm"
+            marker_point_name.ns = f"labels_workspace_area__tree_{valid_config['tree_id']}"
             marker_point_name.id = i + 1 
             marker_point_name.type = Marker.TEXT_VIEW_FACING
             marker_point_name.text = f"Config {i}"
@@ -368,25 +451,22 @@ class RobotDescriptionSubscriber(Node):
             marker_point_name.color.b = 1.0  # Blue
             
             # get the joint positions for the valid configuration
-            joint_positions, offset_z = self.robot.get_joints_placements(valid_config["config"])
+            joint_positions, offset_z = self.robot_handler.get_joints_placements(valid_config["config"])
 
             # get the normalized torques for the valid configuration with current target limits for color visualization
             if self.menu.get_torque_color() == TorqueVisualizationType.TORQUE_LIMITS:
-                norm_joints_torques = self.robot.get_normalized_torques(valid_config["tau"])
+                norm_joints_torques = self.robot_handler.get_normalized_torques(valid_config["tau"])
             else:
                 # if the user selected the max torque, use the maximum torques for the joint
-                if valid_config["arm"] == "left":
-                    norm_joints_torques = self.robot.get_normalized_torques(valid_config["tau"],max_torque_for_joint_left)
-                else:
-                    norm_joints_torques = self.robot.get_normalized_torques(valid_config["tau"],max_torque_for_joint_right)
+                norm_joints_torques = self.robot_handler.get_normalized_torques(valid_config["tau"],max_torque_for_joint, valid_config["tree_id"])
             
             # insert points related to the end effector position in the workspace area and with color based on the normalized torques for each joint
             for joint_pos,tau in zip(joint_positions,norm_joints_torques):
-                # print only the points for the corrisponding arm, in this way we can visualize the workspace area for each arm separately and avoid confusion
-                if valid_config["arm"] in joint_pos["name"] : 
+                # print only the points for the corrisponding tree_id of the valid configuration
+                if self.robot_handler.verify_member_tree(valid_config["tree_id"],joint_pos["id"]): 
                     point = Marker()
-                    point.header.frame_id = "base_link"
-                    point.header.stamp = self.get_clock().now().to_msg()
+                    point.header.frame_id = self.robot_handler.get_root_name()
+                    point.header.stamp = Time()
                     point.ns = joint_pos["name"]
                     point.id = cont
                     point.type = Marker.SPHERE
@@ -407,22 +487,21 @@ class RobotDescriptionSubscriber(Node):
                     cont += 1
 
                     # Add the point to the points array
-                    marker_points.markers.append(point)
+                    marker_ws.markers.append(point)
             
-            # Add the marker point name to the marker point names array
-            marker_point_names.markers.append(marker_point_name)
-
+            # Add the marker point name to the array
+            marker_ws.markers.append(marker_point_name)
 
         # get the unified torque for the valid configurations
-        unified_configurations_torque = self.robot.get_unified_configurations_torque(valid_configs)
+        unified_configurations_torque = self.robot_handler.get_unified_configurations_torque(self.valid_configurations)
 
         # insert points related to the end effector position in the workspace area and with color based on the normalized torque for each configuration
         # this is used to visualize the workspace area with the unified torques for each configuration
         for i, unified_config in enumerate(unified_configurations_torque):
             marker_point = Marker()
-            marker_point.header.frame_id = "base_link"
-            marker_point.header.stamp = self.get_clock().now().to_msg()
-            marker_point.ns = f"unified_torque_workspace_{unified_config['arm']}_arm"
+            marker_point.header.frame_id = self.robot_handler.get_root_name()
+            marker_point.header.stamp = Time()
+            marker_point.ns = f"unified_torque_workspace_tree_{unified_config['tree_id']}"
             marker_point.id = i
             marker_point.type = Marker.SPHERE
             marker_point.action = Marker.ADD
@@ -441,13 +520,136 @@ class RobotDescriptionSubscriber(Node):
             marker_point.color.b = 0.0  # Blue
 
             # Add the marker point to the points array
-            marker_points.markers.append(marker_point)
+            marker_ws.markers.append(marker_point)
 
 
-        # Publish the marker points and names
-        self.publisher_workspace_area.publish(marker_points)
-        self.publisher_workspace_area_names.publish(marker_point_names)
+        return marker_ws
+
+
+    def publish_workspace_area_maximum_payload_area(self):
+        """
+        Publish the workspace area and maximum payloads area in RViz using points and labels for the end points.
+        """
+
+        self.id_current_valid_config = self.get_id_current_valid_configurations()
+
+        # check if the valid configurations are different from the previous one
+        if self.id_current_valid_config != self.prev_id_current_valid_config:
+            # generate the markers for the workspace area
+            self.marker_points = self.generate_workspace_markers()
+            self.marker_max_payloads = self.generate_maximum_payloads_markers()
+        else:
+            # if the valid configurations are the same as the previous one, use the previous markers
+            if self.marker_points is not None:
+                # update the header stamp of the markers to the current time
+                for marker in self.marker_points.markers:
+                    marker.header.stamp = Time()
+
+            if self.marker_max_payloads is not None:
+                # update the header stamp of the maximum payloads markers to the current time
+                for marker in self.marker_max_payloads.markers:
+                    marker.header.stamp = Time()
+
+        self.prev_id_current_valid_config = self.id_current_valid_config
+
+        # Publish the marker points
+        self.publisher_workspace_area.publish(self.marker_points)
         
+        # Publish the maximum payloads markers and labels
+        self.publisher_maximum_payloads.publish(self.marker_max_payloads)
+    
+
+    def generate_maximum_payloads_markers(self):
+        """
+        Generate markers for the maximum payloads in the workspace area in RViz.
+        """
+        # Create a MarkerArray to visualize the maximum payloads
+        marker_max_payloads = MarkerArray()
+
+        # get the maximum payloads for each arm based on the valid configurations
+        max_payloads = self.robot_handler.get_maximum_payloads(self.valid_configurations)
+
+        # Iterate through the valid configurations and create markers
+        for i, valid_config in enumerate(self.valid_configurations):
+            
+            # create the label for the end point (end effector position)
+            marker_point_name = Marker()
+            marker_point_name.header.frame_id = self.robot_handler.get_root_name()
+            marker_point_name.header.stamp = Time()
+
+            marker_point_name.ns = f"label_payloads_tree_{valid_config['tree_id']}"
+            marker_point_name.id = i
+            marker_point_name.type = Marker.TEXT_VIEW_FACING
+            marker_point_name.text = f"Config {i} \nMax payload : {valid_config['max_payload']:.2f} kg"
+            marker_point_name.action = Marker.ADD
+            marker_point_name.pose.position.x = valid_config["end_effector_pos"][0]
+            marker_point_name.pose.position.y = valid_config["end_effector_pos"][1]
+            marker_point_name.pose.position.z = valid_config["end_effector_pos"][2] 
+            marker_point_name.pose.orientation.w = 1.0
+            marker_point_name.scale.x = 0.02
+            marker_point_name.scale.y = 0.02
+            marker_point_name.scale.z = 0.02
+            marker_point_name.color.a = 1.0  # Alpha
+            marker_point_name.color.r = 1.0  # Red
+            marker_point_name.color.g = 1.0  # Green
+            marker_point_name.color.b = 1.0  # Blue
+            
+            # get the joint positions for the valid configuration
+            joint_positions, offset_z = self.robot_handler.get_joints_placements(valid_config["config"])
+
+            # get the normalized payload for the valid configuration with target as maximum payloads for each tree
+            max_payload_for_tree = next(payload["max_payload"] for payload in max_payloads if payload["tree_id"] == valid_config["tree_id"])
+            norm_payload = self.robot_handler.get_normalized_payload(valid_config["max_payload"], max_payload_for_tree)
+            
+             
+            point = Marker()
+            point.header.frame_id = self.robot_handler.get_root_name()
+            point.header.stamp = Time()
+            point.ns = f"max_payloads_tree_{valid_config['tree_id']}"
+            point.id = i
+            point.type = Marker.SPHERE
+            point.action = Marker.ADD
+            point.scale.x = 0.03  # Size of the sphere
+            point.scale.y = 0.03
+            point.scale.z = 0.03
+            
+            point.pose.position.x = valid_config["end_effector_pos"][0]
+            point.pose.position.y = valid_config["end_effector_pos"][1]
+            point.pose.position.z = valid_config["end_effector_pos"][2] - offset_z
+            point.pose.orientation.w = 1.0
+            point.color.a = 1.0  # Alpha
+            point.color.r = norm_payload  # Red
+            point.color.g = 1 - norm_payload  # Green
+            point.color.b = 0.0  # Blue
+            
+            # Add the point to the points array
+            marker_max_payloads.markers.append(point)
+            
+            # Add the marker point name to the marker point names array
+            marker_max_payloads.markers.append(marker_point_name)
+
+        return marker_max_payloads
+
+
+    def get_id_current_valid_configurations(self):
+        """Generate a hash of the current valid configurations to detect changes."""
+        if self.valid_configurations is None:
+            return None
+        
+        # Create a hash based on configuration data and torque color mode
+        config_str = str([
+            (config.get('tree_id', ''), 
+            tuple(config.get('config', [])), 
+            tuple(config.get('tau', [])), 
+            tuple(config.get('end_effector_pos', [])),
+            config.get('max_payload', 0)) 
+            for config in self.valid_configurations
+        ])
+        torque_mode = str(self.menu.get_torque_color())
+        
+        return hash(config_str + torque_mode)
+
+
 
     def clear_workspace_area_markers(self):
         """
@@ -463,8 +665,6 @@ class RobotDescriptionSubscriber(Node):
 
         # Publish the empty MarkerArray to clear the markers
         self.publisher_workspace_area.publish(marker_array_msg)
-        self.publisher_workspace_area_names.publish(marker_array_msg)
-
 
 
 
