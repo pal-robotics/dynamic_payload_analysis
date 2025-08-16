@@ -10,6 +10,8 @@ setup(
         ('share/ament_index/resource_index/packages',
             ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
+        ('share/' + package_name + '/launch', ['launch/dyn_payload_analysis.launch.py']),
+        ('share/' + package_name + '/launch/examples', ['launch/examples/wit.md']),
     ],
     zip_safe=True,
     maintainer='Enrico Moro',
