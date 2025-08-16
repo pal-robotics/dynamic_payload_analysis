@@ -39,12 +39,12 @@ ros2 run dynamic_payload_analysis_ros node_rviz_visualization_menu --ros-args -p
 ## Visualizing the results in RViz
 
 In order to visualize the published objects in RViz, you can add the following markers:
-- MarkerArray **/torque_visualization** : *topic for visualizing the torque of the joints as labels in RViz*
+- **/torque_visualization** *(visualization_msgs/MarkerArray)* : *topic for visualizing the torque of the joints as labels in RViz*
 
-- MarkerArray **/workspace_area** : *topic for visualizing the workspace area as points with labels in RViz*
-- MarkerArray **/external_forces** : *topic for visualizing the external forces as arrows in RViz*
-- MarkerArray **/maximum_payloads** : *topic for visualizing the maximum payloads as points with labels in RViz*
-- InteractiveMarkers **/menu_frames** : *topic for visualizing the interactive marker menu in RViz*
+- **/workspace_area** *(visualization_msgs/MarkerArray)* : *topic for visualizing the workspace area as points with labels in RViz*
+- **/external_forces** *(visualization_msgs/MarkerArray)* : *topic for visualizing the external forces as arrows in RViz*
+- **/maximum_payloads** *(visualization_msgs/MarkerArray)* : *topic for visualizing the maximum payloads as points with labels in RViz*
+- **/menu_frames** *(visualization_msgs/InteractiveMarker)* : *topic for visualizing the interactive marker menu in RViz*
 
 After adding the markers, you'll be able to see a view similar to the one shown below:
 
