@@ -25,14 +25,7 @@ You can find the necessary URDF files in the corrisponding repository: [UR robot
     **Note:** You can change the `ur_type` parameter to `ur3` or `ur5` to visualize other UR robots.
     **Note 2:** This launch file will start also the joint state publisher, which is not needed for the dynamic payload analysis because the node publishes the joint states of the robot. You can remove the joint state publisher from the launch file if you want to avoid conflicts.
 
-3. After opening RViz, you can add the following topics to visualize the results:
-   - **/torque_visualization**: MarkerArray for visualizing the torque of the joints as labels in RViz.
-   - **/workspace_area**: MarkerArray for visualizing the workspace area as points with labels in RViz.
-   - **/external_forces**: MarkerArray for visualizing the external forces as arrows in RViz.
-   - **/maximum_payloads**: MarkerArray for visualizing the maximum payloads as points with labels in RViz.
-   - **/menu_frames**: InteractiveMarkers for visualizing the interactive marker menu in RViz.
-
-4. After adding the markers, you'll be able to see a view similar to the one shown below:
+3. After launching Rviz, you'll be able to see a view similar to the one shown below:
    <div style="text-align: center;">
    <img src="images/ur_robot_overview.png" alt="Overview" width="600"/>
    </div>
