@@ -10,8 +10,11 @@ setup(
         ('share/ament_index/resource_index/packages',
             ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
-        ('share/' + package_name + '/launch', ['launch/dyn_payload_analysis.launch.py']),
-        ('share/' + package_name + '/launch/examples', ['launch/examples/wit.md']),
+        ('share/' + package_name + '/launch', ['launch/examples/dyn_analysis_payload_tiago_pro.launch.py']),
+        ('share/' + package_name + '/launch', ['launch/examples/dyn_analysis_payload_talos.launch.py']),
+        ('share/' + package_name + '/config' + '/rviz', ['config/rviz/tiago_pro_dyn_analysis.rviz']),
+        ('share/' + package_name + '/config' + '/rviz', ['config/rviz/talos_dyn_analysis.rviz']),
+        
     ],
     zip_safe=True,
     maintainer='Enrico Moro',
