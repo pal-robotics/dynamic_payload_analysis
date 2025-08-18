@@ -68,6 +68,7 @@ def declare_actions(launch_description: LaunchDescription, launch_args: LaunchAr
         package="dynamic_payload_analysis_ros",
         executable='node_rviz_visualization_menu',
         name='dynamic_analysis_node',
+        output='screen',
         parameters=[{'advanced_mode': LaunchConfiguration('advanced_mode'),
                      'resolution_ik': LaunchConfiguration('resolution_ik'),
                      'workspace_range': LaunchConfiguration('workspace_range'),
