@@ -26,21 +26,6 @@ from launch.substitutions import LaunchConfiguration
 
 
 def generate_launch_description():
-    advanced_mode = DeclareLaunchArgument(
-        name='advanced_mode',
-        default_value='false',
-        description='If true, it enables to add payload in every links of kinematic trees')
-
-    resolution_ik = DeclareLaunchArgument(
-        name='resolution_ik',
-        default_value='0.20',
-        description='Resolution of IK solver')
-
-    workspace_range = DeclareLaunchArgument(
-        name='workspace_range',
-        default_value='2.0',
-        description='Range of IK solver')
-
 
     rviz_config_file = PathJoinSubstitution(
         [FindPackageShare('dynamic_payload_analysis_ros'), 'config/rviz/', 'talos_dyn_analysis.rviz'])
@@ -50,16 +35,9 @@ def generate_launch_description():
         "talos_description", ["launch", "robot_state_publisher.launch.py"],
     )
 
-    analysis_node = Node(
-        package="dynamic_payload_analysis_ros",
-        executable='node_rviz_visualization_menu',
-        name='dynamic_analysis_node',
-        output='screen',
-        parameters=[{'advanced_mode': LaunchConfiguration('advanced_mode'),
-                     'resolution_ik': LaunchConfiguration('resolution_ik'),
-                     'workspace_range': LaunchConfiguration('workspace_range'),
-                     }]
-        )
+    analysis_node = include_launch_py_description(
+        "dynamic_payload_analysis_ros", ["launch", "dyn_payload_analysis.launch.py"],
+    )
 
 
     start_rviz_cmd = Node(
@@ -72,9 +50,6 @@ def generate_launch_description():
 
     ld = LaunchDescription()
 
-    ld.add_action(advanced_mode)
-    ld.add_action(resolution_ik)
-    ld.add_action(workspace_range)
 
     ld.add_action(robot_state_publisher)
     ld.add_action(start_rviz_cmd)

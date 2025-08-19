@@ -21,6 +21,7 @@ from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
 
 from launch_pal.include_utils import include_scoped_launch_py_description
+from launch_pal.include_utils import include_launch_py_description
 from launch_pal.arg_utils import LaunchArgumentsBase
 from launch_pal.robot_arguments import CommonArgs
 from tiago_pro_description.launch_arguments import TiagoProArgs
@@ -46,36 +47,14 @@ class LaunchArguments(LaunchArgumentsBase):
     torque_estimation: DeclareLaunchArgument = TiagoProArgs.torque_estimation
     use_sim_time: DeclareLaunchArgument = CommonArgs.use_sim_time
     namespace: DeclareLaunchArgument = CommonArgs.namespace
-    
-    advanced_mode: DeclareLaunchArgument = DeclareLaunchArgument(
-            name='advanced_mode',
-            default_value='false',
-            description='If true, it enables to add payload in every links of kinematic trees')
 
-    resolution_ik: DeclareLaunchArgument = DeclareLaunchArgument(
-            name='resolution_ik',
-            default_value='0.20',
-            description='Resolution of IK solver')
-
-    workspace_range: DeclareLaunchArgument = DeclareLaunchArgument(
-            name='workspace_range',
-            default_value='2.0',
-            description='Range of IK solver')
 
 def declare_actions(launch_description: LaunchDescription, launch_args: LaunchArguments):
 
-    analysis_node = Node(
-        package="dynamic_payload_analysis_ros",
-        executable='node_rviz_visualization_menu',
-        name='dynamic_analysis_node',
-        output='screen',
-        parameters=[{'advanced_mode': LaunchConfiguration('advanced_mode'),
-                     'resolution_ik': LaunchConfiguration('resolution_ik'),
-                     'workspace_range': LaunchConfiguration('workspace_range'),
-                     }]
-        )
+    analysis_node = include_launch_py_description(
+        "dynamic_payload_analysis_ros", ["launch", "dyn_payload_analysis.launch.py"],
+    )
     
-
     launch_description.add_action(analysis_node)
 
     robot_state_publisher = include_scoped_launch_py_description(
