@@ -6,25 +6,17 @@ Ensure you have the Franka robot's URDF file and the necessary ROS packages inst
 You can find the necessary URDF files in the corrisponding repository: [Franka URDF](https://github.com/frankarobotics/franka_description)
 
 # Setting Up the Environment
-1. Launch the dynamic payload analysis node:
+1. In the dynamic_payload_analysis_ros package, there is a launch file that allows you to visualize the dynamic payload analysis in RViz for the Franka robot. You can run the following command to launch the node:
     ```bash
-    ros2 run dynamic_payload_analysis_ros node_rviz_visualization_menu
+    ros2 launch dynamic_payload_analysis_ros dyn_analysis_payload_franka.launch.py arm_id:=fer
     ```
-    *If you want to use the advanced parameters, you can set them in the launch command as follows:*
+    *If you want to modify the available parameters for the dynamic analysis, you can set them in the launch command. The available parameters are:*
 
-    ```bash
-    ros2 run dynamic_payload_analysis_ros node_rviz_visualization_menu --ros-args -p advanced_mode:=true -p resolution_ik:=0.10
-    ```
     - advanced_mode: If set to true, allows adding a payload to any link in the kinematic tree of the selected end effector link. If false, you can only add a payload to the end effector link.
     - resolution_ik: Sets the resolution of the inverse kinematics computation. Default is 0.20 meters, but you can set it to a different value if needed.*(Remember: with lower values the computational time will increase a lot)*
-    
-2. Launch the Tiago Pro robot description and RViz using the following command:
-    ```bash
-    ros2 launch franka_description visualize_franka.launch.py arm_id:=fer
-    ```
-    **Note:** This launch file will start also the joint state publisher, which is not needed for the dynamic payload analysis because the node publishes the joint states of the robot. You can remove the joint state publisher from the launch file if you want to avoid conflicts.
+    - workspace_range: Sets the range of the workspace area to be analyzed. Default is 2.0 meters, but you can set it to a different value if needed.
 
-3. After launching Rviz, you'll be able to see a view similar to the one shown below:
+2. After launching Rviz, you'll be able to see a view similar to the one shown below:
    <div style="text-align: center;">
    <img src="images/franka_overview.png" alt="Overview" width="600"/>
    </div>
@@ -56,4 +48,10 @@ You can find the necessary URDF files in the corrisponding repository: [Franka U
     <img src="images/namespaces_franka.png" alt="Workspace Area" width="600"/>
     </div>
     In the image above, you can see the namespaces for the arm joints, where each namespace has points representing the reachable positions of the end effector link selected in the right arm kinematic chain, and the color of the points represents the amount of torque for that joint in the different reachable positions.
+
+
+    The image below shows the workspace area for the arm kinematic chain, with the end effector link set to **fer_link_7**. The points are colored based on the torque required for the **fer_joint_2** with the torque limits as target values.
+    <div style="text-align: center;">
+    <img src="images/franka_calculated_ws.png" alt="Workspace Area" width="600"/>
+    </div>
 
