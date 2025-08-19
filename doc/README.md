@@ -4,36 +4,47 @@
 This package is tested with ROS 2 Humble and it requires **Pinocchio** library to be installed. You can install it using tutorials available at [Pinocchio Installation](https://github.com/stack-of-tasks/pinocchio?tab=readme-ov-file#ros)
 
 ## Compiling from source
-To install the package, you can clone the repository into your ROS 2 workspace and build it using `colcon`. Make sure to have the necessary dependencies installed.
+To install the package, clone the repository into your ROS 2 workspace and build it using `colcon`. Make sure to install all dependencies using rosdep before building the package.
 
 ```bash
+cd ~/your_ros2_workspace/src
 git clone https://github.com/pal-robotics/dynamic_payload_analysis.git
+cd ~/your_ros2_workspace
+rosdep install --from-paths src --ignore-src -r -y
 ```
-After installing the package, build it as shown below:
+
+After installing dependencies, build the package:
 
 ```bash
 colcon build --packages-select dynamic_payload_analysis_ros dynamic_payload_analysis_core
 ```
 
 # Usage
-To use the dynamic payload analysis, you can run the following command:
+To use the dynamic payload analysis, you can run the following command to start the node:
 
 ```bash
 ros2 run dynamic_payload_analysis_ros node_rviz_visualization_menu
 ```
 
-### Advanced parameters
-The ros2 node has some advanced parameters that can be set in the launch command. One of the advanced parameters is the **advanced_mode** parameter, which allows you to add a payload to any link in the kinematic tree of the selected end effector link. If this parameter is set to false, you can only add a payload to the end effector link.
-You can set the advanced parameters in the launch command as follows:
+Otherwise, you can launch the node using the provided launch file:
 
 ```bash
-ros2 run dynamic_payload_analysis_ros node_rviz_visualization_menu --ros-args -p advanced_mode:=true
+ros2 launch dynamic_payload_analysis_ros dyn_payload_analysis.launch.py
 ```
 
-The second parameter is the **resolution_ik**, which allows you to set the resolution of the inverse kinematics computation. The default value is 0.20 meters, but you can set it to a different value if needed. You can set the resolution in the launch command as follows:
+### Advanced parameters
+The ros2 node has some advanced parameters that can be set in the launch command. 
+1. **advanced_mode** parameter, which allows you to add a payload to any link in the kinematic tree of the selected end effector link. If this parameter is set to false, you can only add a payload to the end effector link.
+
+2. **resolution_ik** parameter, which allows you to set the resolution of the inverse kinematics computation. The default value is 0.20 meters, but you can set it to a different value if needed.
+
+3. **workspace_range** parameter, which allows you to set the range of the workspace area to be analyzed. The default value is 2.0 meters, but you can set it to a different value if needed.
+
+
+You can set the parameters in the launch command as follows:
 
 ```bash
-ros2 run dynamic_payload_analysis_ros node_rviz_visualization_menu --ros-args -p resolution_ik:=0.10
+ros2 launch dynamic_payload_analysis_ros dyn_payload_analysis.launch.py advanced_mode:=true resolution_ik:=0.20 workspace_range:=2.0
 ```
 
 ## Visualizing the results in RViz
