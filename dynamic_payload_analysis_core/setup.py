@@ -1,4 +1,5 @@
 from setuptools import find_packages, setup
+import glob
 
 package_name = 'dynamic_payload_analysis_core'
 
@@ -10,6 +11,9 @@ setup(
         ('share/ament_index/resource_index/packages',
             ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
+        ('share/' + package_name + '/examples' + '/urdf' + '/h1_description' + '/urdf', ['examples/urdf/h1_description/urdf/h1.urdf']),
+        ('share/' + package_name + '/examples' + '/urdf' + '/h1_description' + '/urdf', ['examples/urdf/h1_description/urdf/h1_with_hand.urdf']),
+        ('share/' + package_name + '/examples' + '/urdf' + '/h1_description' + '/meshes', glob.glob('examples/urdf/h1_description/meshes/*')),
     ],
     zip_safe=True,
     maintainer='Enrico Moro',
