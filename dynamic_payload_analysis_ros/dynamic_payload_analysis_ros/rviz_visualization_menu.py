@@ -68,6 +68,9 @@ class RobotDescriptionSubscriber(Node):
         # Pusblisher for point cloud of maximum payloads in the workspace area
         self.publisher_maximum_payloads = self.create_publisher(MarkerArray, '/maximum_payloads', 10)
 
+        # Publisher for point cloud of all analyzed points
+        self.publisher_analyzed_points = self.create_publisher(MarkerArray, '/analyzed_points', 10)
+
         # subscription to joint states
         self.joint_states_subscription = self.create_subscription(JointState, '/joint_states', self.joint_states_callback, 10)
 
@@ -103,6 +106,9 @@ class RobotDescriptionSubscriber(Node):
         # variable to store if there is a selected configuration from the workspace menu to visualize
         self.selected_configuration = None
 
+        # variable to store analyzed points of the workspace area
+        self.marker_analyzed_points = None
+
         # timer to compute the valid workspace area 
         self.timer_workspace_calculation = self.create_timer(1.0, self.workspace_calculation)
         # timer to publish the selected configuration in joint states
@@ -113,6 +119,8 @@ class RobotDescriptionSubscriber(Node):
         self.timer_publish_force = self.create_timer(1.0, self.publish_payload_force)
         # timer to update items in the menu for payload selection
         self.timer_update_payload_selection = self.create_timer(0.5, self.update_payload_selection)
+        # timer to publish all analyzed points in the workspace area
+        self.timer_publish_analyzed_points = self.create_timer(2, self.publish_analyzed_points)
 
         self.get_logger().info('Robot description subscriber node started')
 
@@ -160,6 +168,53 @@ class RobotDescriptionSubscriber(Node):
                         self.menu.remove_frame(str(link))
 
             self.links = links  # Update the links to the current ones
+
+
+    def publish_analyzed_points(self):
+        """
+        Publish the analyzed points in the workspace area.
+        This will publish all the points in the workspace area where the robot can reach with the current configuration.
+        """
+        if self.menu is not None:
+            
+            if len(self.robot_handler.get_analyzed_points()) == 0:
+                return
+            else:
+                if self.marker_analyzed_points is None:
+
+                    self.marker_analyzed_points = MarkerArray()
+
+                    # publish the analyzed points
+                    for i, analyzed_point in enumerate(self.robot_handler.get_analyzed_points()):
+                        point = Marker()
+                        point.header.frame_id = self.robot_handler.get_root_name()
+                        point.header.stamp = Time()
+                        point.ns = f"analyzed_points_ns"
+                        point.id = i
+                        point.type = Marker.SPHERE
+                        point.action = Marker.ADD
+                        point.scale.x = 0.01
+                        point.scale.y = 0.01
+                        point.scale.z = 0.01
+                        point.pose.position.x = analyzed_point['position'][0]
+                        point.pose.position.y = analyzed_point['position'][1]
+                        point.pose.position.z = analyzed_point['position'][2]
+                        point.pose.orientation.w = 1.0
+                        point.color.a = 1.0  # Alpha
+                        point.color.r = 1.0  # Red
+                        point.color.g = 1.0  # Green
+                        point.color.b = 1.0  # Blue
+
+                        self.marker_analyzed_points.markers.append(point)
+
+                    self.publisher_analyzed_points.publish(self.marker_analyzed_points)
+
+                else:
+                    # update with current time
+                    for marker in self.marker_analyzed_points.markers:
+                        marker.header.stamp = Time()
+                        
+                    self.publisher_analyzed_points.publish(self.marker_analyzed_points)
 
     def publish_payload_force(self):
         """
