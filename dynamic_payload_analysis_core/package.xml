@@ -13,10 +13,8 @@
   <test_depend>python3-pytest</test_depend>
 
   <depend>python3-numpy</depend>
-  <depend>urdf_parser_py</depend>
+  <depend>urdfdom_py</depend>
   <depend>pinocchio</depend>
-  <depend>python-pathlib</depend>
-  <depend>python-typing</depend>
 
   <export>
     <build_type>ament_python</build_type>
