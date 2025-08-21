@@ -20,6 +20,11 @@
   <depend>visualization_msgs</depend>
   <depend>interactive_markers</depend>
 
+  <depend>franka_description</depend>
+  <depend>talos_description</depend>
+  <depend>ur_description</depend>
+  
+
   <export>
     <build_type>ament_python</build_type>
   </export>
