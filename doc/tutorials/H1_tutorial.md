@@ -26,32 +26,34 @@ You can find the necessary URDF files in the corrisponding repository: [H1 URDF]
 # Analyzing the Workspace Area
 1. Right-click on the interactive markers to open a menu where you can select which kinematic chains you want to analyze by selecting the corresponding end effector link in the sub-menu.
     For H1, the main kinematic chains are:
-    - **leg_left**: Left leg kinematic chain, with the following possible end effector links:
-        - **left_hip_yaw_link**
-        - **left_hip_roll_link**
-        - **left_hip_pitch_link**
-        - **left_knee_link**
-        - **left_ankle_link**
-    - **leg_right**: Right leg kinematic chain, with the following possible end effector links:
-        - **right_hip_yaw_link**
-        - **right_hip_roll_link**
-        - **right_hip_pitch_link**
-        - **right_knee_link**
-        - **right_ankle_link**
-    - **arm_left**: Left arm kinematic chain, with the following possible end effector links:
-        - **torso_link**
-        - **left_shoulder_pitch_link**
-        - **left_shoulder_roll_link**
-        - **left_shoulder_yaw_link**
-        - **left_elbow_link**
-        - **left_hand_link**
-    - **arm_right**: Right arm kinematic chain, with the following possible end effector links:
-        - **torso_link**
-        - **right_shoulder_pitch_link**
-        - **right_shoulder_roll_link**
-        - **right_shoulder_yaw_link**
-        - **right_elbow_link**
-        - **right_hand_link**
+    - **leg_left**: Left leg kinematic chain.
+    - **leg_right**: Right leg kinematic chain.
+    - **arm_left**: Left arm kinematic chain.
+    - **arm_right**: Right arm kinematic chain.
+        ```mermaid
+        graph TD;
+            A[pelvis] --> B[left_hip_yaw_link];
+            B --> C[left_hip_roll_link];
+            C --> D[left_hip_pitch_link];
+            D --> E[left_knee_link];
+            E --> F[left_ankle_link];
+            A[pelvis] --> G[right_hip_yaw_link];
+            G --> H[right_hip_roll_link];
+            H --> I[right_hip_pitch_link];
+            I --> J[right_knee_link];
+            J --> K[right_ankle_link];
+            A[pelvis] --> L[torso_link];
+            L --> M[left_shoulder_pitch_link];
+            M --> N[left_shoulder_roll_link];
+            N --> O[left_shoulder_yaw_link];
+            O --> P[left_elbow_link];
+            P --> Q[left_hand_link];
+            L --> R[right_shoulder_pitch_link];
+            R --> S[right_shoulder_roll_link];
+            S --> T[right_shoulder_yaw_link];
+            T --> U[right_elbow_link];
+            U --> V[right_hand_link];
+        ```
     
     *Note: in the interactive markers menu, there will be more kinematic chains available because the structure of the robot has more kinematic chains in the hands, but this is not relevant for the dynamic payload analysis.*
 

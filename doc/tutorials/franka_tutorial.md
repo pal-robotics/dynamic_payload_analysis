@@ -27,14 +27,16 @@ You can find the necessary URDF files in the corrisponding repository: [Franka U
 1. Right-click on the interactive markers to open a menu where you can select which kinematic chains you want to analyze by selecting the corresponding end effector link in the sub-menu.
     For Franka robot, the main kinematic chain is:
     - **arm**: Arm kinematic chain, with the following possible end effector links:
-        - **fer_link_1**
-        - **fer_link_2**
-        - **fer_link_3**
-        - **fer_link_4**
-        - **fer_link_5**
-        - **fer_link_6**
-        - **fer_link_7**
-        - **fer_leftfinger**
+    ```mermaid
+        graph TD;
+            A[fer_link_1] --> B[fer_link_2];
+            B --> C[fer_link_3];
+            C --> D[fer_link_4];
+            D --> E[fer_link_5];
+            E --> F[fer_link_6];
+            F --> G[fer_link_7];
+            G --> H[fer_leftfinger];
+        
 
 2. After selecting the kinematic chains, you can add a payload to the end effector link or to any link in its kinematic tree (only if the advanced parameter is enabled). This step is not necessary, if you just want to visualize the workspace area without adding a payload.
 

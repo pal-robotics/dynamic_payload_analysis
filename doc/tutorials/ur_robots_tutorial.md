@@ -27,12 +27,15 @@ You can find the necessary URDF files in the corrisponding repository: [UR robot
 1. Right-click on the interactive markers to open a menu where you can select which kinematic chains you want to analyze by selecting the corresponding end effector link in the sub-menu.
     For UR10 robot, the main kinematic chain is:
     - **arm**: Arm kinematic chain, with the following possible end effector links:
-        - **shoulder_link**
-        - **upper_arm_link**
-        - **forearm_link**
-        - **wrist_1_link**
-        - **wrist_2_Link**
-        - **wrist_3_link**
+        ```mermaid
+        graph TD;
+            A[base_link] --> B[shoulder_link];
+            B --> C[upper_arm_link];
+            C --> D[forearm_link];
+            D --> E[wrist_1_link];
+            E --> F[wrist_2_link];
+            F --> G[wrist_3_link];
+        ```
 
 2. After selecting the kinematic chain, you can add a payload to the end effector link or to any link in its kinematic tree (only if the advanced parameter is enabled). This step is not necessary, if you just want to visualize the workspace area without adding a payload.
 

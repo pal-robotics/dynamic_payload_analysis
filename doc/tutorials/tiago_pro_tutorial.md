@@ -26,30 +26,33 @@ You can find the necessary URDF files in the corrisponding repository: [Tiago Pr
 # Analyzing the Workspace Area
 1. Right-click on the interactive markers to open a menu where you can select which kinematic chains you want to analyze by selecting the corresponding end effector link in the sub-menu.
     For tiago pro, the main kinematic chains are:
-    - **arm_left**: Left arm kinematic chain, with the following possible end effector links:
-        - **torso_lift_link**
-        - **arm_left_1_link**
-        - **arm_left_2_link**
-        - **arm_left_3_link**
-        - **arm_left_4_link**
-        - **arm_left_5_link**
-        - **arm_left_6_link**
-        - **arm_left_7_link**
-        - **gripper_left_outer_link**
-    - **arm_right**: Right arm kinematic chain, with the following possible end effector links:
-        - **torso_lift_link**
-        - **arm_right_1_link**
-        - **arm_right_2_link**
-        - **arm_right_3_link**
-        - **arm_right_4_link**
-        - **arm_right_5_link**
-        - **arm_right_6_link**
-        - **arm_right_7_link**
-        - **gripper_right_outer_link**
-    - **head**: Head kinematic chain, with the following possible end effector links:
-        - **torso_lift_link**
-        - **head_link_1**
-        - **head_link_2**
+    1. Right-click on the interactive markers to open a menu where you can select which kinematic chains you want to analyze by selecting the corresponding end effector link in the sub-menu.
+    For tiago pro, the main kinematic chains are:
+    - **arm_left**: Left arm kinematic chain.
+    - **arm_right**: Right arm kinematic chain.
+    - **head**: Head kinematic chain.
+        ```mermaid
+        graph TD;
+            A[torso_lift_link] --> B[arm_left_1_link];
+            B --> C[arm_left_2_link];
+            C --> D[arm_left_3_link];
+            D --> E[arm_left_4_link];
+            E --> F[arm_left_5_link];
+            F --> G[arm_left_6_link];
+            G --> H[arm_left_7_link];
+            H --> I[gripper_left_outer_link];
+            A[torso_lift_link] --> J[head_link_1];
+            J --> K[head_link_2];
+            A[torso_lift_link] --> L[arm_right_1_link];
+            L --> M[arm_right_2_link];
+            M --> N[arm_right_3_link];
+            N --> O[arm_right_4_link];
+            O --> P[arm_right_5_link];
+            P --> Q[arm_right_6_link];
+            Q --> R[arm_right_7_link];
+            R --> S[gripper_right_outer_link];
+        ```
+
 
 2. After selecting the kinematic chains, you can add a payload to the end effector link or to any link in its kinematic tree (only if the advanced parameter is enabled). This step is not necessary, if you just want to visualize the workspace area without adding a payload.
 

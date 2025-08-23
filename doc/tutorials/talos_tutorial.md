@@ -26,47 +26,46 @@ You can find the necessary URDF files in the corrisponding repository: [Talos UR
 # Analyzing the Workspace Area
 1. Right-click on the interactive markers to open a menu where you can select which kinematic chains you want to analyze by selecting the corresponding end effector link in the sub-menu.
     For talos, the main kinematic chains are:
-    - **leg_left**: Left leg kinematic chain, with the following possible end effector links:
-        - **leg_left_1_link**
-        - **leg_left_2_link**
-        - **leg_left_3_link**
-        - **leg_left_4_link**
-        - **leg_left_5_link**
-        - **leg_left_6_link**
-    - **leg_right**: Right leg kinematic chain, with the following possible end effector links:
-        - **leg_right_1_link**
-        - **leg_right_2_link**
-        - **leg_right_3_link**
-        - **leg_right_4_link**
-        - **leg_right_5_link**
-        - **leg_right_6_link**
-    - **arm_left**: Left arm kinematic chain, with the following possible end effector links:
-        - **torso_1_link**
-        - **torso_2_link**
-        - **arm_left_1_link**
-        - **arm_left_2_link**
-        - **arm_left_3_link**
-        - **arm_left_4_link**
-        - **arm_left_5_link**
-        - **arm_left_6_link**
-        - **arm_left_7_link**
-        - **gripper_left_motor_link**
-    - **arm_right**: Right arm kinematic chain, with the following possible end effector links:
-        - **torso_1_link**
-        - **torso_2_link**
-        - **arm_right_1_link**
-        - **arm_right_2_link**
-        - **arm_right_3_link**
-        - **arm_right_4_link**
-        - **arm_right_5_link**
-        - **arm_right_6_link**
-        - **arm_right_7_link**
-        - **gripper_right_motor_link**
-    - **head**: Head kinematic chain, with the following possible end effector links:
-        - **torso_1_link**
-        - **torso_2_link**
-        - **head_link_1**
-        - **head_link_2**
+    - **leg_left**: Left leg kinematic chain.
+    - **leg_right**: Right leg kinematic chain.
+    - **arm_left**: Left arm kinematic chain.
+    - **arm_right**: Right arm kinematic chain.
+    - **head**: Head kinematic chain.
+    ```mermaid
+    graph TD;
+        A[base_link] --> B[leg_left_1_link];
+        B --> C[leg_left_2_link];
+        C --> D[leg_left_3_link];
+        D --> E[leg_left_4_link];
+        E --> F[leg_left_5_link];
+        F --> G[leg_left_6_link];
+        A[base_link] --> H[leg_right_1_link];
+        H --> I[leg_right_2_link];
+        I --> J[leg_right_3_link];
+        J --> K[leg_right_4_link];
+        K --> L[leg_right_5_link];
+        L --> M[leg_right_6_link];
+        A[base_link] --> N[torso_1_link];
+        N --> O[torso_2_link];
+        O --> P[arm_left_1_link];
+        P --> Q[arm_left_2_link];
+        Q --> R[arm_left_3_link];
+        R --> S[arm_left_4_link];
+        S --> T[arm_left_5_link];
+        T --> U[arm_left_6_link];
+        U --> V[arm_left_7_link];
+        V --> W[gripper_left_motor_link];
+        O --> X[arm_right_1_link];
+        X --> Y[arm_right_2_link];
+        Y --> Z[arm_right_3_link];
+        Z --> AA[arm_right_4_link];
+        AA --> AB[arm_right_5_link];
+        AB --> AC[arm_right_6_link];
+        AC --> AD[arm_right_7_link];
+        AD --> AE[gripper_right_motor_link];
+        O --> AF[head_link_1];
+        AF --> AG[head_link_2];
+    ```
 
 2. After selecting the kinematic chains, you can add a payload to the end effector link or to any link in its kinematic tree (only if the advanced parameter is enabled). This step is not necessary, if you just want to visualize the workspace area without adding a payload.
 
