@@ -2,8 +2,7 @@
 This tutorial provides a guide on how to use the dynamic payload analysis for the **Unitree H1 robot**. It covers the visualization of workspace areas, joint torques, and maximum payloads.
 
 # Prerequisites
-Ensure you have the Unitree H1 robot's URDF file and the necessary ROS packages installed and built in the same workspace of the package **dynamic_payload_analysis_core**.
-You can find the necessary URDF files in the corrisponding repository: [H1 URDF]()
+Ensure you have the Unitree H1 robot's URDF file and the necessary ROS packages installed using rosdep.
 
 # Setting Up the Environment
 1. In the dynamic_payload_analysis_ros package, there is a launch file that allows you to visualize the dynamic payload analysis in RViz for the Unitree H1 robot. You can run the following command to launch the node:

@@ -2,7 +2,13 @@
 This tutorial provides a guide on how to use the dynamic payload analysis for the **Tiago Pro robot**. It covers the visualization of workspace areas, joint torques, and maximum payloads.
 
 # Prerequisites
-Ensure you have the Tiago Pro robot's URDF file and the necessary ROS packages installed and built in the same workspace of the package **dynamic_payload_analysis_core**.
+Ensure you have the Tiago Pro robot's URDF file and the necessary ROS packages installed using rosdep.
+For Tiago pro, rosdep will not install robot_description package, so you need to install it manually:
+```bash
+git clone https://github.com/pal-robotics/tiago_pro_robot.git
+```
+
+and install other necessary packages.
 You can find the necessary URDF files in the corrisponding repository: [Tiago Pro URDF](https://github.com/pal-robotics/tiago_robot)
 
 # Setting Up the Environment
