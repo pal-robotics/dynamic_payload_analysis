@@ -3,12 +3,22 @@ This tutorial provides a guide on how to use the dynamic payload analysis for th
 
 # Prerequisites
 Ensure you have the Tiago Pro robot's URDF file and the necessary ROS packages installed using rosdep.
-For Tiago pro, rosdep will not install robot_description package, so you need to install it manually:
+For Tiago pro, rosdep will not install all packages to start robot_description, so you need to install it manually inside your ROS2 workspace. You can clone the following repositories into your ROS2 workspace:
 ```bash
+cd ~/your_ros2_ws/src
 git clone https://github.com/pal-robotics/tiago_pro_robot.git
+git clone https://github.com/pal-robotics/pal_sea_arm.git
+git clone https://github.com/pal-robotics/tiago_pro_head_robot.git
+git clone https://github.com/pal-robotics-forks/realsense.git -b humble-devel
+git clone https://github.com/pal-robotics/realsense_simulation.git -b humble-devel
+git clone https://github.com/pal-robotics/pal_pro_gripper.git -b humble-devel
+
+rosdep update
+rosdep install --from-paths src --ignore-src -r -y
+cd ~/your_ros2_ws
+colcon build --symlink-install
 ```
 
-and install other necessary packages.
 You can find the necessary URDF files in the corrisponding repository: [Tiago Pro URDF](https://github.com/pal-robotics/tiago_robot)
 
 # Setting Up the Environment
