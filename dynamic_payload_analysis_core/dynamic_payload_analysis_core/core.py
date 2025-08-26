@@ -26,12 +26,11 @@ from urdf_parser_py.urdf import URDF
 
 
 class TorqueCalculator:
-    def __init__(self, robot_description : Union[str, Path]):
+    def __init__(self, robot_description : str):
         """
         Initialize the Torques_calculator with the URDF model or XML format provided by robot_description topic.
         
-        :param urdf_path: Path to the URDF file of the robot.
-        :param robot_description: Robot description in XML format provided by /robot_description topic or path of URDF file.
+        :param robot_description: Robot description in XML format provided by /robot_description topic.
         """
 
         # Load the robot model from path or XML string
@@ -56,8 +55,8 @@ class TorqueCalculator:
 
             os.unlink(temp_urdf_path)
 
-        elif isinstance(robot_description, Path):
-            self.model = pin.buildModelFromUrdf(str(robot_description.resolve()))
+        else:
+            raise ValueError("robot_description must be a string containing the URDF XML or the path to the URDF file")
         
         # create data for the robot model
         self.data = self.model.createData()
@@ -69,7 +68,8 @@ class TorqueCalculator:
         # compute main trees of the robot model
         self.compute_subtrees()
 
-        
+        # array to store all analyzed points
+        self.analyzed_points = np.array([], dtype=object)
 
         # array to store all configurations for the robot model
         self.configurations = np.array([], dtype=object)
