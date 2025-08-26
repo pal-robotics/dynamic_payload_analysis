@@ -30,9 +30,10 @@ class TestTorqueCalculator(unittest.TestCase):
         self.assertEqual(root_name, self.robot_handler.get_root_name())
         print("✅ Root name assertion passed")
 
-    def test_subtree(self):
+    def test_subtrees(self):
         subtrees = self.robot_handler.get_subtrees()
 
+        self.assertIsNotNone(subtrees, "Subtrees should not be None")
         self.assertIsInstance(subtrees, np.ndarray, "Subtrees should be a list")
         self.assertEqual(len(subtrees), 7)
         self.assertEqual(subtrees[0]["tip_link_name"], "wheel_front_left_link")
@@ -126,22 +127,130 @@ class TestTorqueCalculator(unittest.TestCase):
         
 
         # should be None because there is no selected joint id inside the object
-        valid_workspace = self.robot_handler.get_valid_workspace(range = 1, resolution= 0.3, masses = None, checked_frames = None)
+        valid_configurations = self.robot_handler.get_valid_workspace(range = 1, resolution= 0.3, masses = None, checked_frames = None)
 
-        self.assertIsInstance(valid_workspace, np.ndarray, "Valid workspace should be a numpy array")
-        self.assertEqual(len(valid_workspace), 0, "Valid workspace length should be zero if there is no selected joint id")
+        self.assertIsInstance(valid_configurations, np.ndarray, "Valid workspace should be a numpy array")
+        self.assertEqual(len(valid_configurations), 0, "Valid workspace length should be zero if there is no selected joint id")
 
         # modify selected joint id to test valid workspace
         self.robot_handler.subtrees[5]["selected_joint_id"] = 25
-        valid_workspace = self.robot_handler.get_valid_workspace(range = 1, resolution= 0.3, masses = None, checked_frames = None)
+        valid_configurations = self.robot_handler.get_valid_workspace(range = 1, resolution= 0.3, masses = None, checked_frames = None)
 
-        self.assertEqual(len(valid_workspace), len(verified_configs), "Valid workspace length should match the verified configurations length")
+        self.assertEqual(len(valid_configurations), len(verified_configs), "Valid workspace length should match the verified configurations length")
 
         print("✅ Compute valid workspace assertion passed")
         
+    def test_compute_maximum_payloads(self):
+        self.robot_handler.subtrees[5]["selected_joint_id"] = 25
+        valid_configurations = self.robot_handler.get_valid_workspace(range = 1, resolution= 0.3, masses = None, checked_frames = None)
 
-     
+        max_payload = self.robot_handler.find_max_payload_binary_search(config = valid_configurations[0], payload_min=0.0, payload_max=10.0, resolution=0.01)
 
+        self.assertIsInstance(max_payload, float, "Max payload should be a float")
+        self.assertGreaterEqual(max_payload, 0.0, "Max payload should be non-negative")
+        self.assertLessEqual(max_payload, 10.0, "Max payload should be within the specified range")
+
+        max_payload = self.robot_handler.find_max_payload_binary_search(config = valid_configurations[0], payload_min=0.0, payload_max=0, resolution=0.01)
+        self.assertEqual(max_payload, 0.0, "Max payload should be zero if payload_max is zero")
+
+        configs_with_payloads = self.robot_handler.compute_maximum_payloads(valid_configurations)
+
+        self.assertIsInstance(configs_with_payloads, np.ndarray, "Configurations with payloads should be a numpy array")
+        self.assertIn("max_payload", configs_with_payloads[0], "Each configuration should have a max_payload key")
+        self.assertIsInstance(configs_with_payloads[0]["max_payload"], float, "Max payload should be a float")
+
+        print("✅ Compute maximum payloads assertion passed")
+
+    def test_compute_forward_dynamics_aba_method(self):
+        zero_config = self.robot_handler.get_zero_configuration()
+        zero_velocity = self.robot_handler.get_zero_velocity()
+        zero_acceleration = self.robot_handler.get_zero_acceleration()
+        tau = np.zeros(self.robot_handler.model.nv)
+
+        computed_acceleration = self.robot_handler.compute_forward_dynamics_aba_method(q=zero_config, qdot=zero_velocity, tau=tau)
+
+        self.assertIsNotNone(computed_acceleration, "Computed acceleration should not be None")
+        self.assertIsInstance(computed_acceleration, np.ndarray, "Computed acceleration should be a numpy array")
+
+        print("✅ Compute forward dynamics ABA method assertion passed")
+
+    def test_compute_jacobian(self):
+        zero_config = self.robot_handler.get_zero_configuration()
+        jacobian = self.robot_handler.compute_jacobian(q=zero_config, frame_name= "arm_left_3_link")
+
+        self.assertIsNotNone(jacobian, "Jacobian should not be None")
+        self.assertIsInstance(jacobian, np.ndarray, "Jacobian should be a numpy array")
+        self.assertEqual(jacobian.shape, (6, self.robot_handler.model.nv), "Jacobian shape should be (6, nv)")
+
+        print("✅ Compute Jacobian assertion passed")
+    
+    def test_verify_member_tree(self):
+        flag = self.robot_handler.verify_member_tree(tree_id=5, joint_id=25)
+
+        self.assertTrue(flag, "Joint ID should be in the specified tree ID")
+        self.assertIsInstance(flag, bool, "Flag should be a boolean")
+
+        flag = self.robot_handler.verify_member_tree(tree_id=5, joint_id=2)
+
+        self.assertFalse(flag, "Joint ID should not be in the specified tree ID")
+
+        print("✅ Verify member tree assertion passed")
+    
+    def test_get_links_from_tree(self):
+        link = self.robot_handler.get_links_from_tree(joint_ids=25)
+        links = self.robot_handler.get_links_from_tree(joint_ids=[25, 26, 24])
+
+        self.assertIsInstance(links, np.ndarray, "Links should be a numpy array")
+        self.assertEqual(len(links), 3, "There should be 3 links in the subtree")
+
+        self.assertIn("arm_right_7_link", link, "Link should be in the subtree")
+        self.assertIsNotNone(link, "Link should not be None")
+        self.assertIsInstance(link, np.ndarray, "Link should be a numpy array")
+    
+        print("✅ Get links from tree assertion passed")
+    
+    def test_get_maximum_torques(self):
+        #modify selected joint id to test valid workspace
+        self.robot_handler.subtrees[5]["selected_joint_id"] = 25
+        valid_configurations = self.robot_handler.get_valid_workspace(range = 1, resolution= 0.3, masses = None, checked_frames = None)
+    
+        max_torques = self.robot_handler.get_maximum_torques(valid_configurations)
+
+        self.assertIsNotNone(max_torques, "Max torques should not be None")
+        self.assertIsInstance(max_torques, np.ndarray, "Max torques should be a numpy array")
+
+        # get selected subtrees only
+        selected_subtrees = [subtree for subtree in self.robot_handler.get_subtrees() if subtree["selected_joint_id"] is not None]
+
+        self.assertEqual(len(max_torques), len(selected_subtrees), "Max torques length should match the number of selected subtrees")
+        self.assertIn("max_values", max_torques[0], "Each max torque entry should have a max_values key")
+        self.assertEqual(max_torques[0]["tree_id"], selected_subtrees[0]["tree_id"], "Tree ID should match the selected subtree's tree ID")
+
+        print("✅ Get maximum torques assertion passed")
+    
+    def test_get_maximum_payloads(self):
+        #modify selected joint id to test valid workspace
+        self.robot_handler.subtrees[5]["selected_joint_id"] = 25
+        valid_configurations = self.robot_handler.get_valid_workspace(range = 1, resolution= 0.3, masses = None, checked_frames = None)
+        valid_configurations = self.robot_handler.compute_maximum_payloads(valid_configurations)
+    
+        max_payloads = self.robot_handler.get_maximum_payloads(valid_configurations)
+
+        self.assertIsNotNone(max_payloads, "Max payloads should not be None")
+        self.assertIsInstance(max_payloads, np.ndarray, "Max payloads should be a numpy array")
+        self.assertGreater(len(max_payloads), 0, "Max payloads length should be greater than zero")
+        self.assertIn("max_payload", max_payloads[0], "Each max payload entry should have a max_payload key")
+        self.assertIsInstance(max_payloads[0]["max_payload"], float, "Max payload values should be a float")
+
+        # get selected subtrees only
+        selected_subtrees = [subtree for subtree in self.robot_handler.get_subtrees() if subtree["selected_joint_id"] is not None]
+
+        self.assertEqual(len(max_payloads), len(selected_subtrees), "Max payloads length should match the number of selected subtrees")
+        self.assertEqual(max_payloads[0]["tree_id"], selected_subtrees[0]["tree_id"], "Tree ID should match the selected subtree's tree ID")
+
+        print("✅ Get maximum payloads assertion passed")
+
+        
         
 
 if __name__ == "__main__":
