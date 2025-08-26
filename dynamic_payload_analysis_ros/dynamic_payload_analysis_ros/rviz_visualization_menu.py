@@ -566,7 +566,7 @@ class RobotDescriptionSubscriber(Node):
         # Create a MarkerArray to visualize the maximum payloads
         marker_max_payloads = MarkerArray()
 
-        # get the maximum payloads for each arm based on the valid configurations
+        # get the maximum payloads for each tree based on the valid configurations
         max_payloads = self.robot_handler.get_maximum_payloads(self.valid_configurations)
 
         # Iterate through the valid configurations and create markers

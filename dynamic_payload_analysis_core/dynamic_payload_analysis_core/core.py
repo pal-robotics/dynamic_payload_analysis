@@ -499,7 +499,7 @@ class TorqueCalculator:
         :param resolution (int): Resolution of the grid to compute configurations.
         :param masses (np.ndarray): Array of masses to apply to the robot model.
         :param checked_frames (np.ndarray): Array of frame names where the external forces are applied.
-        :return: Array of valid configurations that achieve the desired end effector position in format: [{"config", "end_effector_pos, "tau", "arm"}].
+        :return: Array of valid configurations that achieve the desired end effector position in format: [{"config", "end_effector_pos, "tau", "tree_id"}].
         """
         # create the array to store all current valid configurations
         valid_current_configurations = np.array([], dtype=object)
@@ -535,7 +535,8 @@ class TorqueCalculator:
     def compute_maximum_payloads(self, configs : np.ndarray):
         """
         Compute the maximum payload for each provided configuration and return the results with the configs updated with the maximum payload as a new value.
-        :param configs: Array of configurations , format {"config", "end_effector_pos", "tau", "arm", "max_payload" }     
+        
+        :param configs: Array of configurations , format {"config", "end_effector_pos", "tau", "tree_id", "max_payload" }     
         """
         for config in configs:
             config["max_payload"] = self.find_max_payload_binary_search(config, payload_min=0.0, payload_max=15, resolution=0.01)
@@ -546,6 +547,7 @@ class TorqueCalculator:
     def find_max_payload_binary_search(self, config : np.ndarray, payload_min : float = 0.0, payload_max : float = 10.0, resolution : float = 0.01):
         """
         Find the maximum payload for a given configuration using binary search.
+        
         :param config: Configuration dictionary (must contain 'config' key).
         :param payload_min: Minimum payload to test.
         :param payload_max: Maximum payload to test.
@@ -666,7 +668,7 @@ class TorqueCalculator:
         """
         return pin.SE3(np.eye(3), np.array([x, y, z]))
 
-    def get_maximum_torques(self, valid_configs : np.ndarray) -> np.ndarray | np.ndarray:
+    def get_maximum_torques(self, valid_configs : np.ndarray) -> np.ndarray:
         """
         Get the maximum torques for each joint in all valid configurations.
         
@@ -715,9 +717,9 @@ class TorqueCalculator:
 
     def get_maximum_payloads(self, valid_configs : np.ndarray) -> np.ndarray:
         """
-        Get the maximum payloads for all configuration in the left and right arm.
+        Get the maximum payloads for all configuration in the corrisponding tree.
         
-        :param valid_configs: Array of valid configurations with related torques in format: [{"config", "end_effector_pos, "tau", "arm", "max_payload"}].
+        :param valid_configs: Array of valid configurations with related torques in format: [{"config", "end_effector_pos, "tau", "tree_id", "max_payload"}].
         :return: Tuple of arrays of maximum payloads for left and right arms.
         """
         max_payloads = np.array([], dtype=float)
