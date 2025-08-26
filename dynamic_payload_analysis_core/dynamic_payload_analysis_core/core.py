@@ -230,7 +230,7 @@ class TorqueCalculator:
         return tau
     
 
-    def create_ext_force(self, masses : Union[float, np.ndarray] , frame_name : Union[str | np.ndarray], q : np.ndarray) -> np.ndarray:
+    def create_ext_force(self, masses : Union[float, np.ndarray] , frame_name : Union[str | np.ndarray], q : np.ndarray) -> list:
         """
         Create external forces vector based on the masses and frame ID.
         The resulting vector will contain the force applied to the specified frame and with the local orientation of the parent joint.
@@ -338,9 +338,10 @@ class TorqueCalculator:
     def compute_inverse_kinematics(self, q : np.ndarray, end_effector_position: np.ndarray, joint_id : str) -> np.ndarray:
         """
         Compute the inverse kinematics for the robot model with joint limits consideration.
-        :param q: current joint configuration vector.
+        
+        :param q: Current joint configuration vector.
         :param end_effector_position: Position of the end effector in the world frame [rotation matrix , translation vector].
-        :param end_effector_name: Name of the end effector joint.
+        :param joint_id: Id of the end effector joint.
         :return: Joint configuration vector that achieves the desired end effector position.
         """
 
@@ -450,7 +451,7 @@ class TorqueCalculator:
         :param selected_joint_id (int): Identifier of the selected joint in the tree to verify the configurations for.
         :return: Array of valid configurations with related torques in format: [{"config", "end_effector_pos, "tau", "tree_id","selected_joint_id" }].
         """
-        
+        # TODO : get the tree_id from the sub tree array instead of passing it as parameter
         valid_configurations = []
         
         # check valid configurations for left arm
@@ -467,7 +468,7 @@ class TorqueCalculator:
                 # Compute the inverse dynamics for the current configuration without external forces
                 tau = self.compute_inverse_dynamics(q["config"], self.get_zero_velocity(), self.get_zero_acceleration())
 
-            # Check if the torques are within the effort limits
+            # Check if the torques are within the effort limits 
             if self.check_effort_limits(tau= tau, tree_id= tree_id).all():
                 valid = True
                 # Compute all the collisions
@@ -653,6 +654,17 @@ class TorqueCalculator:
         
         return np.array(frames, dtype=object)
     
+
+    def get_end_effector_position_array(self, x: float, y: float, z: float) -> np.ndarray:
+        """
+        Get the end effector position as a array.
+        
+        :param x: X position of the end effector.
+        :param y: Y position of the end effector.
+        :param z: Z position of the end effector.
+        :return: Numpy array representing the end effector position.
+        """
+        return pin.SE3(np.eye(3), np.array([x, y, z]))
 
     def get_maximum_torques(self, valid_configs : np.ndarray) -> np.ndarray | np.ndarray:
         """
