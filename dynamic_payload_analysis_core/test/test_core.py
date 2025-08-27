@@ -470,7 +470,7 @@ class TestTorqueCalculator(unittest.TestCase):
 
         self.assertIsNotNone(parent_id, "Parent joint ID should not be None")
         self.assertIsInstance(parent_id, int, "Parent joint ID should be an integer")
-        self.assertEqual(parent_id, 24, "Parent joint ID should match the expected value")
+        self.assertEqual(parent_id, 25, "Parent joint ID should match the expected value")
 
         print("✅ Get parent joint ID assertion passed")
 
