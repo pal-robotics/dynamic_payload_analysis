@@ -767,10 +767,10 @@ class TorqueCalculator:
                 else:
                     norm_tau.append(0.0)
 
-        return norm_tau
+        return np.array(norm_tau, dtype=float)
 
 
-    def get_normalized_payload(self, payload : np.ndarray, target_payload : float) -> np.ndarray:
+    def get_normalized_payload(self, payload : float, target_payload : float) -> float:
         """
         Normalize the torques vector to a unified scale.
         
@@ -783,12 +783,11 @@ class TorqueCalculator:
         return norm_payload    
 
 
-    def get_unified_configurations_torque(self, valid_configs : np.ndarray) -> np.ndarray | np.ndarray:
+    def get_unified_configurations_torque(self, valid_configs : np.ndarray) -> np.ndarray:
         """
         Get a unified sum of torques for all possible configurations of the robot model.
         
-        :param q: Joint configuration vector. 
-        :param valid_configs: Array of 
+        :param valid_configs: Array of valid configurations 
         """
 
         torques_sum = np.array([], dtype=float)
@@ -905,7 +904,8 @@ class TorqueCalculator:
     def get_random_configuration(self) -> tuple[np.ndarray, np.ndarray]:
         """
         Get a random configuration for configuration and velocity vectors.
-        :return: Random configuration vectors.
+        
+        :return: Random configuration vectors for joint positions and velocities.
         """
         q_limits_lower = self.model.lowerPositionLimit
         q_limits_upper = self.model.upperPositionLimit
@@ -1019,6 +1019,8 @@ class TorqueCalculator:
         
         :param pos_joints: List of joint positions provided by jointstate publisher.
         :param name_positions: List of joint names in the order provided by jointstate publisher.
+
+        :return: Joint configuration vector in pinocchio format.
         """
         
         q = np.zeros(self.model.nq)
@@ -1050,7 +1052,8 @@ class TorqueCalculator:
         Example: continuous joints (wheels) are represented as two values in the configuration vector but 
         in the joint state publisher they are represented as one value (angle).
 
-        :param q : Joint configuration provided by pinocchio library
+        :param q: Joint configuration provided by pinocchio library
+        
         :return: Joint positions in the format of joint state publisher.
         """
         
@@ -1073,7 +1076,7 @@ class TorqueCalculator:
             
             cont += self.model.joints[i].nq
         
-        return config
+        return np.array(config, dtype=object)
     
 
     def get_joints_placements(self, q : np.ndarray) -> np.ndarray | float:
@@ -1097,15 +1100,15 @@ class TorqueCalculator:
         return placements, offset_z
     
 
-    def get_joint_name(self, id_joint: int) -> np.ndarray:
+    def get_joint_name(self, joint_id: int) -> str:
         """
         Get the name of the joint by its ID.
         
-        :param id_joint: ID of the joint to get the name for.
+        :param joint_id: ID of the joint to get the name for.
         :return: Name of the joint.
         """
 
-        return self.model.names[id_joint]
+        return self.model.names[joint_id]
 
     def get_joint_placement(self, joint_id : int, q : np.ndarray) -> dict:
         """
@@ -1166,6 +1169,7 @@ class TorqueCalculator:
     def get_links(self,all_frames : bool = False) -> np.ndarray:
         """
         Get the array of link names for payload menu.
+        
         :param all_frames: If True, return all frames, otherwise return only current tip frames.
         :return: array of link names.
         """
