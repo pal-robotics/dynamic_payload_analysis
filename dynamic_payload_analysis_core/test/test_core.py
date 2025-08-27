@@ -249,9 +249,230 @@ class TestTorqueCalculator(unittest.TestCase):
         self.assertEqual(max_payloads[0]["tree_id"], selected_subtrees[0]["tree_id"], "Tree ID should match the selected subtree's tree ID")
 
         print("✅ Get maximum payloads assertion passed")
+    
 
+    def test_get_normalized_torques(self):
+        standard_config = self.robot_handler.get_zero_configuration()
+        # get torques for standard configuration
+        torques = self.robot_handler.compute_inverse_dynamics(standard_config, self.robot_handler.get_zero_velocity(), self.robot_handler.get_zero_acceleration())
+
+        normalized_torques = self.robot_handler.get_normalized_torques(torques)
+
+        self.assertIsNotNone(normalized_torques, "Normalized torques should not be None")
+        self.assertIsInstance(normalized_torques, np.ndarray, "Normalized torques should be a numpy array")
+        self.assertEqual(len(normalized_torques), len(torques), "Normalized torques length should match the torques length")
+        self.assertTrue(all(0 <= nt <= 1.0 for nt in normalized_torques), "All normalized torques should be between 0 and 1")
+
+        self.robot_handler.set_joint_tree_selection(tree_id=5, joint_id=25)
+        valid_configurations = self.robot_handler.get_valid_workspace(range = 1, resolution= 0.3, masses = None, checked_frames = None)
+    
+        max_torques = self.robot_handler.get_maximum_torques(valid_configurations)
+        normalized_torques_with_max = self.robot_handler.get_normalized_torques(torques, target_torque= max_torques, tree_id=5)
         
+        self.assertIsNotNone(normalized_torques_with_max, "Normalized torques with max should not be None")
+        self.assertIsInstance(normalized_torques_with_max, np.ndarray, "Normalized torques with max should be a numpy array")
+        self.assertEqual(len(normalized_torques_with_max), len(torques), "Normalized torques with max length should match the torques length")
+
+        print("✅ Get normalized torques assertion passed")
+    
+    def test_get_normalized_payload(self):
+        norm_payload = self.robot_handler.get_normalized_payload(payload=5,target_payload=10)
+
+        self.assertIsNotNone(norm_payload, "Normalized payload should not be None")
+        self.assertIsInstance(norm_payload, float, "Normalized payload should be a float")
+        self.assertGreaterEqual(norm_payload, 0.0, "Normalized payload should be non-negative")
+        self.assertEqual(norm_payload, 0.5, "Normalized payload should be 0.5 for payload 5 and target payload 10")
+
+        print("✅ Get normalized payload assertion passed")
+    
+    def test_get_unified_configurations_torque(self):
+        self.robot_handler.set_joint_tree_selection(tree_id=5, joint_id=25)
+        valid_configurations = self.robot_handler.get_valid_workspace(range = 1, resolution= 0.3, masses = None, checked_frames = None)
+        valid_configurations = self.robot_handler.compute_maximum_payloads(valid_configurations)
+
+        unified_configs = self.robot_handler.get_unified_configurations_torque(valid_configurations)
+
+        self.assertIsNotNone(unified_configs, "Unified configurations should not be None")
+        self.assertIsInstance(unified_configs, np.ndarray, "Unified configurations should be a numpy array")
+        self.assertIn("norm_tau", unified_configs[0], "Each unified configuration should have a normalized_torque key")
+        self.assertEqual(len(unified_configs), len(valid_configurations), "Unified configurations length should match the valid configurations length")
+
+        print("✅ Get unified configurations torque assertion passed")
+
+    def test_check_zero(self):
+        zero_config = np.zeros(self.robot_handler.model.nv)
+        non_zero_config = zero_config + 1
+
+        self.assertTrue(self.robot_handler.check_zero(zero_config), "Zero configuration should be identified as zero")
+        self.assertFalse(self.robot_handler.check_zero(non_zero_config), "Non-zero configuration should not be identified as zero")
+
+        print("✅ Check zero assertion passed")
+
+    def test_get_zero_config_vel_acc(self):
+        zero_config = self.robot_handler.get_zero_configuration()
+        zero_velocity = self.robot_handler.get_zero_velocity()
+        zero_acceleration = self.robot_handler.get_zero_acceleration()
+
+        self.assertIsNotNone(zero_config, "Zero configuration should not be None")
+        self.assertIsNotNone(zero_velocity, "Zero velocity should not be None")
+        self.assertIsNotNone(zero_acceleration, "Zero acceleration should not be None")
+
+        self.assertIsInstance(zero_config, np.ndarray, "Zero configuration should be a numpy array")
+        self.assertIsInstance(zero_velocity, np.ndarray, "Zero velocity should be a numpy array")
+        self.assertIsInstance(zero_acceleration, np.ndarray, "Zero acceleration should be a numpy array")
+
+        self.assertTrue(all(v == 0.0 for v in zero_config), "All elements in zero configuration should be zero")
+        self.assertTrue(all(v == 0.0 for v in zero_velocity), "All elements in zero velocity should be zero")
+        self.assertTrue(all(v == 0.0 for v in zero_acceleration), "All elements in zero acceleration should be zero")
+
+        print("✅ Get zero configuration, velocity, and acceleration assertion passed")
+
+    def test_get_analyzed_points(self):
+        analyzed_points = self.robot_handler.get_analyzed_points()
+
+        self.assertIsInstance(analyzed_points, np.ndarray, "Analyzed points should be a numpy array")
+        self.assertEqual(len(analyzed_points), 0, "Analyzed points length should be zero initially")
+
+        self.robot_handler.set_joint_tree_selection(tree_id=5, joint_id=25)
+        valid_configurations = self.robot_handler.get_valid_workspace(range = 1, resolution= 0.3, masses = None, checked_frames = None)
+
+        analyzed_points = self.robot_handler.get_analyzed_points()
+
+        self.assertGreater(len(analyzed_points), 0, "Analyzed points length should be greater than zero after computing valid workspace")
+
+        print("✅ Get analyzed points assertion passed")
+    
+    def test_get_random_configuration(self):
+        q, qdot = self.robot_handler.get_random_configuration()
+
+        self.assertIsNotNone(q, "Random configuration should not be None")
+        self.assertIsInstance(q, np.ndarray, "Random configuration should be a numpy array")
+        self.assertIsNotNone(qdot, "Random velocity should not be None")
+        self.assertIsInstance(qdot, np.ndarray, "Random velocity should be a numpy array")
         
+        print("✅ Get random configuration assertion passed")
+    
+    def test_check_joint_limits(self):
+        within_limits_config = self.robot_handler.get_zero_configuration()
+        out_of_limits_config = within_limits_config + 100  # Assuming this will exceed joint limits
+
+        self.assertIsInstance(self.robot_handler.check_joint_limits(within_limits_config), np.ndarray, "Return value should be a numpy array of booleans")
+        self.assertTrue(np.all(self.robot_handler.check_joint_limits(within_limits_config)), "Configuration within limits should return True")
+        self.assertFalse(np.all(self.robot_handler.check_joint_limits(out_of_limits_config)), "Configuration out of limits should return False")
+    
+        print("✅ Check joint limits assertion passed")
+
+    def test_check_effort_limits(self):
+        low_tau = self.robot_handler.compute_inverse_dynamics(self.robot_handler.get_zero_configuration(), self.robot_handler.get_zero_velocity(), self.robot_handler.get_zero_acceleration())
+        high_tau = low_tau + 100
+        
+
+        self.assertIsInstance(self.robot_handler.check_effort_limits(low_tau,tree_id=5), np.ndarray, "Return value should be a numpy array of booleans")
+        self.assertTrue(np.all(self.robot_handler.check_effort_limits(low_tau,tree_id=5)), "Torques within limits should return True")
+        self.assertFalse(np.all(self.robot_handler.check_effort_limits(high_tau,tree_id=5)), "Torques out of limits should return False")
+
+        print("✅ Check effort limits assertion passed")
+    
+    def test_get_position_for_joint_states(self):
+        q = self.robot_handler.get_zero_configuration()
+
+        position = self.robot_handler.get_position_for_joint_states(q)
+
+        self.assertIsNotNone(position, "Position should not be None")
+        self.assertIsInstance(position, np.ndarray, "Position should be a numpy array")
+    
+        print("✅ Get position for joint states assertion passed")
+    
+    def test_get_joints_placements(self):
+        q = self.robot_handler.get_zero_configuration()
+
+        joint_placement, offset = self.robot_handler.get_joints_placements(q = q)
+
+        self.assertIsNotNone(joint_placement, "Joint placement should not be None")
+        self.assertIsInstance(joint_placement, np.ndarray, "Joint placement should be a numpy array")
+        self.assertIsNotNone(offset, "Offset should not be None")
+        self.assertIsInstance(offset, float, "Offset should be a float")
+    
+    def test_get_joint_placement(self):
+        q = self.robot_handler.get_zero_configuration()
+
+        joint_placement = self.robot_handler.get_joint_placement(joint_id=20,q = q)
+
+        self.assertIsNotNone(joint_placement, "Joint placement should not be None")
+        self.assertIsInstance(joint_placement, dict, "Joint placement should be a dictionary")
+        self.assertIn("x", joint_placement, "Joint placement should have an 'x' key")
+        self.assertIn("y", joint_placement, "Joint placement should have a 'y' key")
+        self.assertIn("z", joint_placement, "Joint placement should have a 'z' key")
+    
+        print("✅ Get joint placement assertion passed")
+
+    def test_get_joint_name(self):
+        joint_name = self.robot_handler.get_joint_name(joint_id=25)
+
+        self.assertIsNotNone(joint_name, "Joint name should not be None")
+        self.assertIsInstance(joint_name, str, "Joint name should be a string")
+        self.assertEqual(joint_name, "arm_right_7_joint", "Joint name should match the expected value")
+
+        print("✅ Get joint name assertion passed")
+
+    def test_get_mass_matrix(self):
+        q = self.robot_handler.get_zero_configuration()
+
+        mass_matrix = self.robot_handler.get_mass_matrix(q = q)
+
+        self.assertIsNotNone(mass_matrix, "Mass matrix should not be None")
+        self.assertIsInstance(mass_matrix, np.ndarray, "Mass matrix should be a numpy array")
+        self.assertEqual(mass_matrix.shape, (self.robot_handler.model.nv, self.robot_handler.model.nv), "Mass matrix shape should be (nv, nv)")
+
+        print("✅ Get mass matrix assertion passed")
+    
+    def test_get_joints(self):
+        joints = self.robot_handler.get_joints()
+
+        self.assertIsNotNone(joints, "Joints should not be None")
+        self.assertIsInstance(joints, np.ndarray, "Joints should be a list")
+        self.assertGreater(len(joints), 0, "Joints list should not be empty")
+        self.assertIn("arm_right_1_joint", joints, "Joints list should contain 'arm_right_1_joint'")
+
+        print("✅ Get joints assertion passed")
+
+    def test_get_frames(self):
+        frames = self.robot_handler.get_frames()
+
+        self.assertIsNotNone(frames, "Frames should not be None")
+        self.assertIsInstance(frames, np.ndarray, "Frames should be a list")
+        self.assertGreater(len(frames), 0, "Frames list should not be empty")
+        self.assertIn("arm_right_1_link", frames, "Frames list should contain 'arm_right_1_link'")
+
+        print("✅ Get frames assertion passed")
+
+    def test_get_links(self):
+        self.robot_handler.set_joint_tree_selection(tree_id=5, joint_id=25)
+        links = self.robot_handler.get_links(all_frames=True)
+
+        self.assertIsNotNone(links, "Links should not be None")
+        self.assertIsInstance(links, np.ndarray, "Links should be a list")
+        self.assertGreater(len(links), 0, "Links list should not be empty")
+        self.assertIn("arm_right_1_link", links, "Links list should contain 'arm_right_1_link'")
+
+        only_tip_links = self.robot_handler.get_links(all_frames=False)
+
+        self.assertIsNotNone(only_tip_links, "Links should not be None")
+        self.assertIsInstance(only_tip_links, np.ndarray, "Links should be a list")
+        self.assertGreater(len(only_tip_links), 0, "Links list should not be empty")
+        self.assertLess(len(only_tip_links), len(links), "Tip links list should be smaller than all links list")
+        self.assertIn("arm_right_7_link", only_tip_links, "Tip links list should contain 'arm_right_7_link'")
+    
+        print("✅ Get links assertion passed")
+
+    def test_get_parent_joint_id(self):
+        parent_id = self.robot_handler.get_parent_joint_id(frame_name="arm_right_7_link")
+
+        self.assertIsNotNone(parent_id, "Parent joint ID should not be None")
+        self.assertIsInstance(parent_id, int, "Parent joint ID should be an integer")
+        self.assertEqual(parent_id, 24, "Parent joint ID should match the expected value")
+
+        print("✅ Get parent joint ID assertion passed")
 
 if __name__ == "__main__":
     unittest.main()
