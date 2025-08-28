@@ -69,7 +69,7 @@ class RobotDescriptionSubscriber(Node):
         self.publisher_maximum_payloads = self.create_publisher(MarkerArray, '/maximum_payloads', 10)
 
         # Publisher for point cloud of all analyzed points
-        self.publisher_analyzed_points = self.create_publisher(MarkerArray, '/analyzed_points', 10)
+        self.publisher_analyzed_points = self.create_publisher(MarkerArray, '/analyzed_points', qos_profile=rclpy.qos.QoSProfile( durability=rclpy.qos.DurabilityPolicy.TRANSIENT_LOCAL, depth = 1))
 
         # subscription to joint states
         self.joint_states_subscription = self.create_subscription(JointState, '/joint_states', self.joint_states_callback, 10)
@@ -119,8 +119,6 @@ class RobotDescriptionSubscriber(Node):
         self.timer_publish_force = self.create_timer(1.0, self.publish_payload_force)
         # timer to update items in the menu for payload selection
         self.timer_update_payload_selection = self.create_timer(0.5, self.update_payload_selection)
-        # timer to publish all analyzed points in the workspace area
-        self.timer_publish_analyzed_points = self.create_timer(2, self.publish_analyzed_points)
 
         self.get_logger().info('Robot description subscriber node started')
 
@@ -170,7 +168,7 @@ class RobotDescriptionSubscriber(Node):
             self.links = links  # Update the links to the current ones
 
 
-    def publish_analyzed_points(self):
+    def publisher_analyzed_point_markers(self):
         """
         Publish the analyzed points in the workspace area.
         This will publish all the points in the workspace area where the robot can reach with the current configuration.
@@ -282,6 +280,9 @@ class RobotDescriptionSubscriber(Node):
 
                 # compute the maximum payloads for the valid configurations
                 self.valid_configurations = self.robot_handler.compute_maximum_payloads(self.valid_configurations)
+
+                # publish the analyzed points in the workspace area
+                self.publisher_analyzed_point_markers()
                 
                 # insert the valid configurations in the menu
                 self.menu.insert_dropdown_configuration(self.valid_configurations)
