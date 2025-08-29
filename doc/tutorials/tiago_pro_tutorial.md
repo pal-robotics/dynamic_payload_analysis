@@ -88,3 +88,33 @@ You can find the necessary URDF files in the corrisponding repository: [Tiago Pr
     <img src="images/tiago_pro_calculated_ws.png" alt="Workspace Area" width="600"/>
     </div>
 
+# Results
+Here are some results obtained from the dynamic payload analysis for the Tiago Pro robot:
+1. Configuration used for the analysis:
+    - End effector link: **gripper_right_outer_link**
+    - Payload: 0.0 kg (on the end effector link)
+    - Resolution IK: 0.20 m
+    - Workspace range: 2.0 m
+
+    With these parameters, the computation finds 177 reachable positions for the end effector link.
+    
+    The maximum payloads with this end effector link is around 14 kg (in a static configuration, without considering dynamic effects).
+
+2. Configuration used for the analysis:
+    - End effector link: **gripper_right_outer_link**
+    - Payload: 3.0 kg (on the end effector link)
+    - Resolution IK: 0.20 m
+    - Workspace range: 2.0 m
+
+    With these parameters, the computation finds 172 reachable positions for the end effector link, this shows that adding a payload reduces the reachable workspace area.
+
+3. Configuration used for the analysis:
+    - End effector link: **gripper_right_outer_link**
+    - Payload: 5.0 kg (on the end effector link)
+    - Resolution IK: 0.20 m
+    - Workspace range: 2.0 m
+
+    With these parameters, the computation finds 98 reachable positions for the end effector link. The increased payload further reduces the reachable workspace area. 
+    
+
+
