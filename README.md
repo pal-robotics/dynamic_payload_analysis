@@ -26,4 +26,4 @@ You can find more documentation here : [Setup and Tutorials](doc/README.md)
 ## About the project
 This project is being developed as part of [Google Summer of Code 2025](https://summerofcode.withgoogle.com/programs/2025/projects/mPxgXKpc).
 
-The contributor is [Enrico Moro](https://github.com/enrico391) and the project is mentored by [Sai Kishor Kothakota](https://github.com/saikishor), [Luca Marchionni](https://github.com/lucamarchionni) and [Noel Jimenez](https://github.com/Noel215). 
+The contributor is [Enrico Moro](https://github.com/enrico391) and the project is mentored by [Sai Kishor Kothakota](https://github.com/saikishor), [Luca Marchionni](https://github.com/lucamarchionni) and [Noel Jimenez](https://github.com/Noel215).
