@@ -19,7 +19,7 @@ cd ~/your_ros2_ws
 colcon build --symlink-install
 ```
 
-You can find the necessary URDF files in the corrisponding repository: [Tiago Pro URDF](https://github.com/pal-robotics/tiago_robot)
+You can find the necessary URDF files in the corrisponding repository: [Tiago Pro URDF](https://github.com/pal-robotics/tiago_pro_robot)
 
 # Setting Up the Environment
 1. In the dynamic_payload_analysis_ros package, there is a launch file that allows you to visualize the dynamic payload analysis in RViz for the Tiago Pro robot. You can run the following command to launch the node:
