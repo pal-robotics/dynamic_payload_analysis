@@ -6,7 +6,7 @@ This tool will benefit roboticists, engineers, and researchers working on mobile
 
 ## Outcomes of this package
 
-  * A C++ or Python tool to compute and visualize payload capacity in a specific robot joint configuration or inside the robot’s workspace.
+  * A Python tool to compute and visualize payload capacity in a specific robot joint configuration or inside the robot’s workspace.
   * A joint requirement estimation module that suggests required actuator capabilities for achieving a specified payload.
   * Integration with ROS 2, URDF, and RViz
   * A custom RViz plugin to dynamically display payload constraints and actuator requirements.
