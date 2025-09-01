@@ -138,7 +138,7 @@ Furthermore, the maximum payloads for each valid configuration are displayed in 
 </div>
 
 # Tutorials for different robots
-- [Tiago pro](tutorials/tiago_pro_tutorial.md)
+- [TIAGo Pro](tutorials/tiago_pro_tutorial.md)
 - [Talos](tutorials/talos_tutorial.md)
 - [Unitree H1](tutorials/H1_tutorial.md)
 - [Franka Robot](tutorials/franka_tutorial.md)
