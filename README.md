@@ -17,8 +17,8 @@ This tool will benefit roboticists, engineers, and researchers working on mobile
 You can find more documentation here : [Setup and Tutorials](doc/README.md)
 
 **Tutorials for different robots**:
-- [Tiago pro](tutorials/tiago_pro_tutorial.md)
-- [Talos](tutorials/talos_tutorial.md)
+- [TIAGo Pro](tutorials/tiago_pro_tutorial.md)
+- [TALOS](tutorials/talos_tutorial.md)
 - [Unitree H1](tutorials/H1_tutorial.md)
 - [Franka Robot](tutorials/franka_tutorial.md)
 - [UR_robots](tutorials/ur_robots_tutorial.md)
