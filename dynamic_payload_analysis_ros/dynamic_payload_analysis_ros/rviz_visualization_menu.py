@@ -63,10 +63,10 @@ class RobotDescriptionSubscriber(Node):
         self.publisher_rviz_torque = self.create_publisher(MarkerArray, '/torque_visualization', 10)
 
         # Pusblisher for point cloud workspace area
-        self.publisher_workspace_area = self.create_publisher(MarkerArray, '/workspace_area', 10)
+        self.publisher_workspace_area = self.create_publisher(MarkerArray, '/workspace_area', qos_profile=rclpy.qos.QoSProfile( durability=rclpy.qos.DurabilityPolicy.TRANSIENT_LOCAL, depth = 1))
 
         # Pusblisher for point cloud of maximum payloads in the workspace area
-        self.publisher_maximum_payloads = self.create_publisher(MarkerArray, '/maximum_payloads', 10)
+        self.publisher_maximum_payloads = self.create_publisher(MarkerArray, '/maximum_payloads', qos_profile=rclpy.qos.QoSProfile( durability=rclpy.qos.DurabilityPolicy.TRANSIENT_LOCAL, depth = 1))
 
         # Publisher for point cloud of all analyzed points
         self.publisher_analyzed_points = self.create_publisher(MarkerArray, '/analyzed_points', qos_profile=rclpy.qos.QoSProfile( durability=rclpy.qos.DurabilityPolicy.TRANSIENT_LOCAL, depth = 1))
