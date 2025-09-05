@@ -69,7 +69,8 @@ class TorqueCalculator:
         # compute main trees of the robot model
         self.compute_subtrees()
 
-        
+        # array to store all analyzed points
+        self.analyzed_points = np.array([], dtype=object)
 
         # array to store all configurations for the robot model
         self.configurations = np.array([], dtype=object)
@@ -422,11 +423,17 @@ class TorqueCalculator:
         
         # Create an array to store all configurations
         configurations = []
+
+        # restore analyzed points array
+        self.analyzed_points = np.array([], dtype=object)
         
         # Iterate over the range to compute all configurations
         for x in np.arange(-range, range , resolution):
             for y in np.arange(-range, range , resolution):
                 for z in np.arange(-range/2, range , resolution):
+                    
+                    self.analyzed_points = np.append(self.analyzed_points, {"position" : [x, y, z]})
+
                     target_position = pin.SE3(np.eye(3), np.array([x, y, z]))
                     new_q = self.compute_inverse_kinematics(q, target_position, end_joint_id)
                      
@@ -872,6 +879,15 @@ class TorqueCalculator:
         
         return a0
     
+
+    def get_analyzed_points(self) -> np.ndarray:
+        """
+        Get the analyzed points during the computation of all configurations.
+        
+        :return: Array of analyzed points.
+        """
+        
+        return self.analyzed_points
 
     def get_random_configuration(self) -> tuple[np.ndarray, np.ndarray]:
         """
