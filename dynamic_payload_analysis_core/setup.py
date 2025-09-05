@@ -18,7 +18,8 @@ setup(
     zip_safe=True,
     maintainer='Enrico Moro',
     maintainer_email='enrimoro003@gmail.com',
-    description='This package implements core functionalities for dynamic payload analysis in robotics, focusing on torque calculations and external force handling.',
+    description='This package implements functionalities for dynamic payload analysis,'
+                'focusing on torque calculations and external force handling.',
     license='Apache License 2.0',
     tests_require=['pytest'],
     install_requires=[
