@@ -135,7 +135,7 @@ class RobotDescriptionSubscriber(Node):
         
         # Add subtree to the menu 
         for i, subtree in enumerate(self.robot_handler.get_subtrees()):
-            self.menu.insert_subtree(i,subtree['tip_link_name'], subtree["joint_names"], subtree["joint_ids"], subtree["link_names"])
+            self.menu.insert_subtree(i,subtree.tip_link_name, subtree.joint_names, subtree.joint_ids, subtree.link_names)
 
 
     def update_payload_selection(self):
@@ -174,7 +174,7 @@ class RobotDescriptionSubscriber(Node):
                 
                 # use the selected configuration from the menu to get the right joint placement 
                 if self.selected_configuration is not None:
-                    joint_position = self.robot_handler.get_joint_placement(id_force,self.valid_configurations[self.selected_configuration]["config"])
+                    joint_position = self.robot_handler.get_joint_placement(id_force,self.valid_configurations[self.selected_configuration].joint_positions)
                 else:
                     joint_position = self.robot_handler.get_joint_placement(id_force,self.robot_handler.get_zero_configuration())
 
@@ -226,7 +226,7 @@ class RobotDescriptionSubscriber(Node):
                 self.valid_configurations = self.robot_handler.get_valid_workspace(range = self.range_ik,resolution= self.resolution_ik, masses = self.masses, checked_frames = self.checked_frames)
 
                 # compute the maximum payloads for the valid configurations
-                self.valid_configurations = self.robot_handler.compute_maximum_payloads(self.valid_configurations)
+                self.robot_handler.compute_maximum_payloads(self.valid_configurations)
                 
                 # insert the valid configurations in the menu
                 self.menu.insert_dropdown_configuration(self.valid_configurations)
@@ -256,7 +256,7 @@ class RobotDescriptionSubscriber(Node):
             
             # if there is a selected configuration, publish the joint states based on the valid configurations calculated previously
             if self.selected_configuration is not None:
-                configs = self.robot_handler.get_position_for_joint_states(self.valid_configurations[self.selected_configuration]["config"])
+                configs = self.robot_handler.get_position_for_joint_states(self.valid_configurations[self.selected_configuration].joint_positions)
                 joint_state = JointState()
                 joint_state.header.stamp = self.get_clock().now().to_msg()
                 
@@ -341,11 +341,11 @@ class RobotDescriptionSubscriber(Node):
                 # if you are using the calculated configuration from workspace, you can use the valid configurations to visualize the torques labels
 
                 # get the positions of the joints where the torques are applied based on 
-                joints_position, offset_z = self.robot_handler.get_joints_placements(self.valid_configurations[self.selected_configuration]["config"])
+                joints_position, offset_z = self.robot_handler.get_joints_placements(self.valid_configurations[self.selected_configuration].joint_positions)
                 # get the torques status (if the torques are within the limits)
-                status_efforts = self.robot_handler.check_effort_limits(self.valid_configurations[self.selected_configuration]["tau"])
+                status_efforts = self.robot_handler.check_effort_limits(self.valid_configurations[self.selected_configuration].tau)
 
-                self.publish_label_torques(self.valid_configurations[self.selected_configuration]["tau"], status_torques=status_efforts ,joints_position=joints_position)
+                self.publish_label_torques(self.valid_configurations[self.selected_configuration].tau, status_torques=status_efforts ,joints_position=joints_position)
             
 
 
@@ -433,14 +433,14 @@ class RobotDescriptionSubscriber(Node):
             marker_point_name.header.frame_id = self.robot_handler.get_root_name()
             marker_point_name.header.stamp = Time()
 
-            marker_point_name.ns = f"labels_workspace_area__tree_{valid_config['tree_id']}"
+            marker_point_name.ns = f"labels_workspace_area__tree_{valid_config.tree_id}"
             marker_point_name.id = i + 1 
             marker_point_name.type = Marker.TEXT_VIEW_FACING
             marker_point_name.text = f"Config {i}"
             marker_point_name.action = Marker.ADD
-            marker_point_name.pose.position.x = valid_config["end_effector_pos"][0]
-            marker_point_name.pose.position.y = valid_config["end_effector_pos"][1]
-            marker_point_name.pose.position.z = valid_config["end_effector_pos"][2] + 0.05  # Offset to avoid overlap with the sphere
+            marker_point_name.pose.position.x = valid_config.end_effector_pose[0]
+            marker_point_name.pose.position.y = valid_config.end_effector_pose[1]
+            marker_point_name.pose.position.z = valid_config.end_effector_pose[2] + 0.05  # Offset to avoid overlap with the sphere
             marker_point_name.pose.orientation.w = 1.0
             marker_point_name.scale.x = 0.02
             marker_point_name.scale.y = 0.02
@@ -451,19 +451,19 @@ class RobotDescriptionSubscriber(Node):
             marker_point_name.color.b = 1.0  # Blue
             
             # get the joint positions for the valid configuration
-            joint_positions, offset_z = self.robot_handler.get_joints_placements(valid_config["config"])
+            joint_positions, offset_z = self.robot_handler.get_joints_placements(valid_config.joint_positions)
 
             # get the normalized torques for the valid configuration with current target limits for color visualization
             if self.menu.get_torque_color() == TorqueVisualizationType.TORQUE_LIMITS:
-                norm_joints_torques = self.robot_handler.get_normalized_torques(valid_config["tau"])
+                norm_joints_torques = self.robot_handler.get_normalized_torques(valid_config.tau)
             else:
                 # if the user selected the max torque, use the maximum torques for the joint
-                norm_joints_torques = self.robot_handler.get_normalized_torques(valid_config["tau"],max_torque_for_joint, valid_config["tree_id"])
+                norm_joints_torques = self.robot_handler.get_normalized_torques(valid_config.tau,max_torque_for_joint, valid_config.tree_id)
             
             # insert points related to the end effector position in the workspace area and with color based on the normalized torques for each joint
             for joint_pos,tau in zip(joint_positions,norm_joints_torques):
                 # print only the points for the corrisponding tree_id of the valid configuration
-                if self.robot_handler.verify_member_tree(valid_config["tree_id"],joint_pos["id"]): 
+                if self.robot_handler.verify_member_tree(valid_config.tree_id,joint_pos["id"]): 
                     point = Marker()
                     point.header.frame_id = self.robot_handler.get_root_name()
                     point.header.stamp = Time()
@@ -475,9 +475,9 @@ class RobotDescriptionSubscriber(Node):
                     point.scale.y = 0.03
                     point.scale.z = 0.03
                     
-                    point.pose.position.x = valid_config["end_effector_pos"][0]
-                    point.pose.position.y = valid_config["end_effector_pos"][1]
-                    point.pose.position.z = valid_config["end_effector_pos"][2] - offset_z
+                    point.pose.position.x = valid_config.end_effector_pose[0]
+                    point.pose.position.y = valid_config.end_effector_pose[1]
+                    point.pose.position.z = valid_config.end_effector_pose[2] - offset_z
                     point.pose.orientation.w = 1.0
                     point.color.a = 1.0  # Alpha
                     point.color.r = tau  # Red
@@ -577,14 +577,14 @@ class RobotDescriptionSubscriber(Node):
             marker_point_name.header.frame_id = self.robot_handler.get_root_name()
             marker_point_name.header.stamp = Time()
 
-            marker_point_name.ns = f"label_payloads_tree_{valid_config['tree_id']}"
+            marker_point_name.ns = f"label_payloads_tree_{valid_config.tree_id}"
             marker_point_name.id = i
             marker_point_name.type = Marker.TEXT_VIEW_FACING
-            marker_point_name.text = f"Config {i} \nMax payload : {valid_config['max_payload']:.2f} kg"
+            marker_point_name.text = f"Config {i} \nMax payload : {(valid_config.maximum_payload):.2f} kg"
             marker_point_name.action = Marker.ADD
-            marker_point_name.pose.position.x = valid_config["end_effector_pos"][0]
-            marker_point_name.pose.position.y = valid_config["end_effector_pos"][1]
-            marker_point_name.pose.position.z = valid_config["end_effector_pos"][2] 
+            marker_point_name.pose.position.x = valid_config.end_effector_pose[0]
+            marker_point_name.pose.position.y = valid_config.end_effector_pose[1]
+            marker_point_name.pose.position.z = valid_config.end_effector_pose[2] 
             marker_point_name.pose.orientation.w = 1.0
             marker_point_name.scale.x = 0.02
             marker_point_name.scale.y = 0.02
@@ -594,18 +594,18 @@ class RobotDescriptionSubscriber(Node):
             marker_point_name.color.g = 1.0  # Green
             marker_point_name.color.b = 1.0  # Blue
             
-            # get the joint positions for the valid configuration
-            joint_positions, offset_z = self.robot_handler.get_joints_placements(valid_config["config"])
+            # get the joint placements for the valid configuration
+            _, offset_z = self.robot_handler.get_joints_placements(valid_config.joint_positions)
 
             # get the normalized payload for the valid configuration with target as maximum payloads for each tree
-            max_payload_for_tree = next(payload["max_payload"] for payload in max_payloads if payload["tree_id"] == valid_config["tree_id"])
-            norm_payload = self.robot_handler.get_normalized_payload(valid_config["max_payload"], max_payload_for_tree)
+            max_payload_for_tree = next(payload["max_payload"] for payload in max_payloads if payload["tree_id"] == valid_config.tree_id)
+            norm_payload = self.robot_handler.get_normalized_payload(valid_config.maximum_payload, max_payload_for_tree)
             
              
             point = Marker()
             point.header.frame_id = self.robot_handler.get_root_name()
             point.header.stamp = Time()
-            point.ns = f"max_payloads_tree_{valid_config['tree_id']}"
+            point.ns = f"max_payloads_tree_{valid_config.tree_id}"
             point.id = i
             point.type = Marker.SPHERE
             point.action = Marker.ADD
@@ -613,9 +613,9 @@ class RobotDescriptionSubscriber(Node):
             point.scale.y = 0.03
             point.scale.z = 0.03
             
-            point.pose.position.x = valid_config["end_effector_pos"][0]
-            point.pose.position.y = valid_config["end_effector_pos"][1]
-            point.pose.position.z = valid_config["end_effector_pos"][2] - offset_z
+            point.pose.position.x = valid_config.end_effector_pose[0]
+            point.pose.position.y = valid_config.end_effector_pose[1]
+            point.pose.position.z = valid_config.end_effector_pose[2] - offset_z
             point.pose.orientation.w = 1.0
             point.color.a = 1.0  # Alpha
             point.color.r = norm_payload  # Red
@@ -638,11 +638,11 @@ class RobotDescriptionSubscriber(Node):
         
         # Create a hash based on configuration data and torque color mode
         config_str = str([
-            (config.get('tree_id', ''), 
-            tuple(config.get('config', [])), 
-            tuple(config.get('tau', [])), 
-            tuple(config.get('end_effector_pos', [])),
-            config.get('max_payload', 0)) 
+            (config.tree_id, 
+            tuple(config.joint_positions), 
+            tuple(config.tau), 
+            tuple(config.end_effector_pose),
+            config.maximum_payload) 
             for config in self.valid_configurations
         ])
         torque_mode = str(self.menu.get_torque_color())
