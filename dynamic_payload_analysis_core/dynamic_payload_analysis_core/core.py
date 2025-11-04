@@ -308,41 +308,6 @@ class TorqueCalculator:
         pin.updateFramePlacements(self.model, self.data)
     
 
-
-    def compute_inverse_kinematics_optik(self, q : np.ndarray, end_effector_position: np.ndarray) -> np.ndarray:
-        """
-        Compute the inverse kinematics for the robot model using the Optik library.
-        
-        :param q: current joint configuration vector.
-        :param end_effector_position: Position of the end effector in the world frame [rotation matrix , translation vector].
-        :return: Joint configuration vector that achieves the desired end effector position.
-        """
-        # TODO : It doees not work with the current version of the library
-        
-        # Compute the inverse kinematics
-        sol = self.ik_model.ik(self.ik_config, end_effector_position, q)
-        
-        return sol
-    
-
-
-    def compute_inverse_kinematics_ikpy(self, q : np.ndarray, end_effector_position: np.ndarray) -> np.ndarray:
-        """
-        Compute the inverse kinematics for the robot model using the ikpy library.
-        
-        :param q: current joint configuration vector.
-        :param end_effector_position: Position of the end effector in the world frame [rotation matrix , translation vector].
-        :return: Joint configuration vector that achieves the desired end effector position.
-        """
-        # TODO : It doees not work with the current version of the library
-        
-        # Compute the inverse kinematics
-        sol = self.ik_model.inverse_kinematics(end_effector_position)
-        
-        return sol
-
-
-
     def compute_inverse_kinematics(self, q : np.ndarray, end_effector_position: np.ndarray, iterations : int, joint_id : str) -> np.ndarray:
         """
         Compute the inverse kinematics for the robot model with joint limits consideration.
@@ -788,6 +753,22 @@ class TorqueCalculator:
                 max_payloads = np.append(max_payloads, {"tree_id": tree.id, "max_payload": max_payload})
 
         return max_payloads
+    
+    def get_minimum_payloads(self, valid_configs : np.ndarray[Configuration]) -> np.ndarray:
+        """
+        Get the minimum payloads for all configuration in the corrisponding tree.
+        
+        :param valid_configs: Array of configuration object.
+        :return: Tuple of arrays of minimum payloads for each tree.
+        """
+        max_payloads = np.array([], dtype=float)
+        for tree in self.subtrees:
+            payloads = [config.maximum_payload for config in valid_configs if config.tree_id == tree.id]
+            if payloads:
+                max_payload = min(payloads)
+                min_payloads = np.append(min_payloads, {"tree_id": tree.id, "min_payload": max_payload})
+
+        return min_payloads
             
     
     
