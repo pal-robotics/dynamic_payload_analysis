@@ -28,39 +28,67 @@ from dynamic_payload_analysis_core.configuration import Configuration
 
 
 class TorqueCalculator:
-    def __init__(self, robot_description : Union[str, Path]):
+    def __init__(self, robot_description : Union[str, Path, object], viser_object: bool = False):
         """
         Initialize the Torques_calculator with the URDF model or XML format provided by robot_description topic.
         
-        :param urdf_path: Path to the URDF file of the robot.
-        :param robot_description: Robot description in XML format provided by /robot_description topic or path of URDF file.
+        :param robot_description: Robot description in XML format provided by /robot_description topic, path of URDF file or object for viser usage.
+        :param viser_object: Boolean to indicate if the torqueCalculator is used in viser environment or not.
         """
 
-        # Load the robot model from path or XML string
-        if isinstance(robot_description, str):
-            self.model = pin.buildModelFromXML(robot_description)
-            
-            # compute mimic joints 
-            self.compute_mimic_joints(robot_description)
+        if viser_object:
+            # when robot_description is already a URDF object provided by library like robot_descriptions
+            # get the robot object
+            robot = robot_description.robot
+            # write the urdf string to a temporary file
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.urdf', delete=False) as temp_file:
+                robot_description.write_xml_file(temp_file.name)
 
+            # Get the absolute path of the current script
+            path = temp_file
+
+            with open(path, "rb",) as f:
+                robot_description = f.read()
+            # create model from the urdf string
+            self.model = pin.buildModelFromXML(robot_description)
+
+            # compute mimic joints 
+            self.compute_mimic_joints(robot, viser_object=True)
             # get the root joint name
             self.root_name = self.get_root_joint_name(robot_description)
 
-            # create temporary URDF file from the robot description string
-            with tempfile.NamedTemporaryFile(mode='w', suffix='.urdf', delete=False) as temp_file:
-                    temp_file.write(robot_description)
-                    temp_urdf_path = temp_file.name
-
-            self.geom_model = pin.buildGeomFromUrdf(self.model,temp_urdf_path,pin.GeometryType.COLLISION)
-            
+            # create geometry model from the urdf file
+            self.geom_model = pin.buildGeomFromUrdf(self.model,temp_file.absolute(),pin.GeometryType.COLLISION)
             # Add collisition pairs
             self.geom_model.addAllCollisionPairs()
 
-            os.unlink(temp_urdf_path)
+        else:
+            # Load the robot model from path or XML string
+            if isinstance(robot_description, str):
+                self.model = pin.buildModelFromXML(robot_description)
+                
+                # compute mimic joints 
+                self.compute_mimic_joints(robot_description)
 
-        elif isinstance(robot_description, Path):
-            self.model = pin.buildModelFromUrdf(str(robot_description.resolve()))
+                # get the root joint name
+                self.root_name = self.get_root_joint_name(robot_description)
+
+                # create temporary URDF file from the robot description string
+                with tempfile.NamedTemporaryFile(mode='w', suffix='.urdf', delete=False) as temp_file:
+                        temp_file.write(robot_description)
+                        temp_urdf_path = temp_file.name
+
+                self.geom_model = pin.buildGeomFromUrdf(self.model,temp_urdf_path,pin.GeometryType.COLLISION)
+                
+                # Add collisition pairs
+                self.geom_model.addAllCollisionPairs()
+
+                os.unlink(temp_urdf_path)
+
+            elif isinstance(robot_description, Path):
+                self.model = pin.buildModelFromUrdf(str(robot_description.resolve()))
         
+    
         # create data for the robot model
         self.data = self.model.createData()
         self.geom_data = pin.GeometryData(self.geom_model)
@@ -95,18 +123,21 @@ class TorqueCalculator:
         return root_name
 
     
-    def compute_mimic_joints(self, urdf_xml: str):
+    def compute_mimic_joints(self, urdf_xml: Union[str, object], viser_object: bool = False):
         """
         Function to find all mimic joints with mimicked joints and ids.
 
         Args:
-            urdf_xml (str, object): The string from robot_description topic or the joints object.
+            urdf_xml (str, object): The string from robot_description topic or the robot object.
+            viser_object (bool): Boolean to indicate if the torqueCalculator is used in viser environment or not.
         """
-        
-        try:
-            robot = URDF.from_xml_string(urdf_xml)
-        except:
-            print(f"Error parsing URDF xml")
+        if viser_object:
+            robot = urdf_xml
+        else:
+            try:
+                robot = URDF.from_xml_string(urdf_xml)
+            except:
+                print(f"Error parsing URDF xml")
 
         self.mimic_joint_names = []
         self.mimicked_joint_names = []
@@ -237,7 +268,7 @@ class TorqueCalculator:
     
         return tau
     
-
+    # TODO : change type hints for a better definition in frame_name and masses
     def create_ext_force(self, masses : Union[float, np.ndarray] , frame_name : Union[str | np.ndarray], q : np.ndarray) -> np.ndarray:
         """
         Create external forces vector based on the masses and frame ID.
@@ -306,7 +337,7 @@ class TorqueCalculator:
         """
         pin.forwardKinematics(self.model, self.data, q)
         pin.updateFramePlacements(self.model, self.data)
-    
+
 
     def compute_inverse_kinematics(self, q : np.ndarray, end_effector_position: np.ndarray, iterations : int, joint_id : str) -> np.ndarray:
         """
@@ -398,11 +429,11 @@ class TorqueCalculator:
             self.computation_status["total"] = 1
             
 
-    def compute_all_configurations(self,tree : Subtree, range : int, resolution : int, iterations : int) -> np.ndarray:
+    def compute_all_configurations(self,tree : Subtree, range : int = 1.0, resolution : int = 0.25, iterations : int = 500) -> np.ndarray:
         """
         Compute all configurations for the robot model within a specified range.
         
-        :param tree: Subtree object for which to compute the configurations.
+        :param tree (Subtree): Subtree object for which to compute the configurations.
         :param range (int): Range as side of a square where in the center there is the actual position of end effector.
         :param resolution (int): Resolution of the grid to compute configurations.
         :param iterations (int): Maximum number of iterations for the inverse kinematics solver.
@@ -411,6 +442,10 @@ class TorqueCalculator:
         
         if range <= 0:
             raise ValueError("Range must be a positive value")
+        if resolution <= 0:
+            raise ValueError("Resolution must be a positive value")
+        if iterations <= 0:
+            raise ValueError("Iterations must be a positive value")
         
         # reset the configurations array in the tree to prevent accumulation of previous computations
         tree.configurations = np.array([], dtype=Configuration)
@@ -438,7 +473,7 @@ class TorqueCalculator:
                         # append the new configuration to the configurations array in the tree
                         tree.configurations = np.append(tree.configurations, new_config)
         
-    
+        
 
 
     def verify_configurations(self, configurations: np.ndarray, masses : np.ndarray, checked_frames : np.ndarray, tree_id: int, selected_joint_id: int) -> np.ndarray:
@@ -494,7 +529,6 @@ class TorqueCalculator:
                     # add value of tau and tree id to the valid configuration
                     configuration.tau = tau
                     configuration.selected_joint_id = selected_joint_id
-
                     # append the valid configuration to the valid configurations array
                     valid_configurations = np.append(valid_configurations,configuration) 
 
@@ -754,6 +788,7 @@ class TorqueCalculator:
 
         return max_payloads
     
+
     def get_minimum_payloads(self, valid_configs : np.ndarray[Configuration]) -> np.ndarray:
         """
         Get the minimum payloads for all configuration in the corrisponding tree.
@@ -769,8 +804,6 @@ class TorqueCalculator:
                 min_payloads = np.append(min_payloads, {"tree_id": tree.id, "min_payload": max_payload})
 
         return min_payloads
-            
-    
     
 
     def get_normalized_torques(self, tau : np.ndarray, target_torque : np.ndarray = None, tree_id: int = None) -> np.ndarray:
@@ -1041,14 +1074,6 @@ class TorqueCalculator:
                 else:
                     within_limits = np.append(within_limits, True)
 
-            # for i in range(self.model.njoints -1):
-            #     if arm in self.model.names[i+1]:
-            #         if abs(tau[i]) > self.model.effortLimit[i]:
-            #             print(f"\033[91mJoint {i+1} exceeds effort limit: {tau[i]} > {self.model.effortLimit[i]} \033[0m\n")
-            #             within_limits = np.append(within_limits, False)
-            #         else:
-            #             within_limits = np.append(within_limits, True)
-            
             if np.all(within_limits):
                 print("All joints are within effort limits. \n")
 
