@@ -17,11 +17,11 @@ This tool will benefit roboticists, engineers, and researchers working on mobile
 You can find more documentation here : [Setup and Tutorials](doc/README.md)
 
 **Tutorials for different robots**:
-- [TIAGo Pro](tutorials/tiago_pro_tutorial.md)
-- [TALOS](tutorials/talos_tutorial.md)
-- [Unitree H1](tutorials/H1_tutorial.md)
-- [Franka Robot](tutorials/franka_tutorial.md)
-- [UR_robots](tutorials/ur_robots_tutorial.md)
+- [TIAGo Pro](doc/tutorials/tiago_pro_tutorial.md)
+- [TALOS](doc/tutorials/talos_tutorial.md)
+- [Unitree H1](doc/tutorials/H1_tutorial.md)
+- [Franka Robot](doc/tutorials/franka_tutorial.md)
+- [UR_robots](doc/tutorials/ur_robots_tutorial.md)
 
 ## About the project
 This project is being developed as part of [Google Summer of Code 2025](https://summerofcode.withgoogle.com/programs/2025/projects/mPxgXKpc).
