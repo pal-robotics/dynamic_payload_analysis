@@ -611,7 +611,7 @@ class TorqueCalculator:
             
         return False
         
-    def compute_maximum_payloads(self, configs : np.ndarray[Configuration]) -> np.ndarray:
+    def compute_maximum_payloads(self, configs : np.ndarray[Configuration]):
         """
         Compute the maximum payload for each provided configuration.
         
