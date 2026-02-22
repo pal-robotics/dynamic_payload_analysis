@@ -45,9 +45,9 @@ class TorqueCalculator:
                 robot_description.write_xml_file(temp_file.name)
 
             # Get the absolute path of the current script
-            path = temp_file
+            file_path = temp_file.name
 
-            with open(path, "rb",) as f:
+            with open(file_path, "rb",) as f:
                 robot_description = f.read()
             # create model from the urdf string
             self.model = pin.buildModelFromXML(robot_description)
@@ -58,7 +58,7 @@ class TorqueCalculator:
             self.root_name = self.get_root_joint_name(robot_description)
 
             # create geometry model from the urdf file
-            self.geom_model = pin.buildGeomFromUrdf(self.model,temp_file.absolute(),pin.GeometryType.COLLISION)
+            self.geom_model = pin.buildGeomFromUrdf(self.model, file_path, pin.GeometryType.COLLISION)
             # Add collisition pairs
             self.geom_model.addAllCollisionPairs()
 
