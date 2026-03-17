@@ -279,7 +279,7 @@ class RobotDescriptionSubscriber(Node):
                 self.valid_configurations = self.robot_handler.get_valid_workspace(range = self.range_ik,resolution= self.resolution_ik, masses = self.masses, checked_frames = self.checked_frames)
 
                 # compute the maximum payloads for the valid configurations
-                self.valid_configurations = self.robot_handler.compute_maximum_payloads(self.valid_configurations)
+                self.robot_handler.compute_maximum_payloads(self.valid_configurations)
 
                 # publish the analyzed points in the workspace area
                 self.publisher_analyzed_point_markers()

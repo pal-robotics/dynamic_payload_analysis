@@ -317,6 +317,8 @@ class MenuPayload():
         Args:
             configuration (np.ndarray): Array of configuration to be displayed in the dropdown.
         """
+        if configuration is None:
+            return
 
         if configuration.size == 0:
             return
